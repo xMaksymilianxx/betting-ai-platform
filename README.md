@@ -1,27 +1,27 @@
 # 🎯 Betting AI Platform
 
-Najzaawansowana platforma AI do typowania sportowego.
+Najzaawansowana platforma AI do typowania sportowego z integracją 4 profesjonalnych API.
 
-## 🚀 Quick Start
+## 🚀 Funkcje
 
-1. Import projektu do Vercel z GitHub
-2. Vercel automatycznie wykryje Next.js
-3. Deploy uruchomi się automatycznie
-4. Wszystkie API keys są już w `vercel.json`
+- 🤖 6-Model AI Ensemble
+- 📊 4 API Integration (Football-Data, Sportmonks, Live-Score, API-Football)
+- ⚡ Real-time Live Scores
+- 💎 Value Bet Hunter
+- 📈 ROI Tracking
 
-## 📱 Instrukcje dla Androida
+## 🛠️ Tech Stack
 
-1. Utwórz folder główny projektu na telefonie
-2. Skopiuj wszystkie pliki zgodnie ze strukturą
-3. Push do GitHub przez aplikację mobilną (np. Termux + git)
-4. Import w Vercel
+- Next.js 14 + TypeScript
+- TailwindCSS
+- Vercel Postgres
+- TensorFlow.js
 
-## ✅ Co już jest skonfigurowane
+## 📦 Deployment
 
-- ✅ Next.js 14 + TypeScript
-- ✅ TailwindCSS
-- ✅ 4 API integrations
-- ✅ Edge runtime
-- ✅ Wszystkie klucze API
+1. Push do GitHub
+2. Import w Vercel
+3. Deploy automatycznie
+4. Wszystkie API keys są w `vercel.json`
 
-Gotowe do użycia!
+Gotowe! 🎉
