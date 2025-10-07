@@ -1,4 +1,4 @@
-// Enhanced Live Data Fetcher with full API logging
+// Enhanced Live Data Fetcher - Multi-sport support + Real odds
 
 interface Match {
   id: string;
@@ -39,57 +39,46 @@ class LiveDataFetcher {
   private readonly RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || 'c4e98069a3msh43378e5e19d1f3fp123456jsn1234567890ab';
   private readonly RAPIDAPI_HOST_LIVESCORE = 'livescore6.p.rapidapi.com';
   private readonly RAPIDAPI_HOST_FOOTBALL = 'api-football-v1.p.rapidapi.com';
-  private readonly RAPIDAPI_HOST_ALLSPORTS = 'allsportsapi2.p.rapidapi.com';
+  private readonly RAPIDAPI_HOST_BASKETBALL = 'api-basketball.p.rapidapi.com';
 
   async fetchAllMatches(): Promise<Match[]> {
     const allMatches: Match[] = [];
 
     try {
-      const [livescoreMatches, footballMatches, allsportsMatches] = await Promise.allSettled([
+      const [livescoreMatches, footballMatches, basketballMatches, tennisMatches] = await Promise.allSettled([
         this.fetchFromLivescore(),
         this.fetchFromFootball(),
-        this.fetchFromAllSports()
+        this.fetchBasketball(),
+        this.fetchTennis()
       ]);
 
       if (livescoreMatches.status === 'fulfilled') {
-        console.log('
-🔴 ===== LIVESCORE API RESPONSE =====');
-        if (livescoreMatches.value.length > 0) {
-          console.log('First match structure:');
-          console.log(JSON.stringify(livescoreMatches.value[0], null, 2));
-          console.log(`Total matches: ${livescoreMatches.value.length}`);
-        }
+        console.log(`
+🔴 LIVESCORE: ${livescoreMatches.value.length} matches`);
         allMatches.push(...livescoreMatches.value);
       }
 
       if (footballMatches.status === 'fulfilled') {
-        console.log('
-⚽ ===== FOOTBALL API RESPONSE =====');
-        if (footballMatches.value.length > 0) {
-          console.log('First match structure:');
-          console.log(JSON.stringify(footballMatches.value[0], null, 2));
-          console.log(`Total matches: ${footballMatches.value.length}`);
-        }
+        console.log(`⚽ FOOTBALL: ${footballMatches.value.length} matches`);
         allMatches.push(...footballMatches.value);
       }
 
-      if (allsportsMatches.status === 'fulfilled') {
-        console.log('
-🏆 ===== ALLSPORTS API RESPONSE =====');
-        if (allsportsMatches.value.length > 0) {
-          console.log('First match structure:');
-          console.log(JSON.stringify(allsportsMatches.value[0], null, 2));
-          console.log(`Total matches: ${allsportsMatches.value.length}`);
-        }
-        allMatches.push(...allsportsMatches.value);
+      if (basketballMatches.status === 'fulfilled') {
+        console.log(`🏀 BASKETBALL: ${basketballMatches.value.length} matches`);
+        allMatches.push(...basketballMatches.value);
+      }
+
+      if (tennisMatches.status === 'fulfilled') {
+        console.log(`🎾 TENNIS: ${tennisMatches.value.length} matches`);
+        allMatches.push(...tennisMatches.value);
       }
 
       console.log(`
-📊 TOTAL MATCHES FETCHED: ${allMatches.length}
+📊 TOTAL: ${allMatches.length} matches
 `);
       
     } catch (error) {
-      console.error('❌ Error fetching matches:', error);
+      console.error('❌ Error fetching:', error);
     }
 
     return this.deduplicateMatches(allMatches);
@@ -98,21 +87,17 @@ class LiveDataFetcher {
   private async fetchFromLivescore(): Promise<Match[]> {
     try {
       const response = await fetch(`https://${this.RAPIDAPI_HOST_LIVESCORE}/matches/v2/list-live?Category=soccer`, {
-        method: 'GET',
         headers: {
           'X-RapidAPI-Key': this.RAPIDAPI_KEY,
           'X-RapidAPI-Host': this.RAPIDAPI_HOST_LIVESCORE
         }
       });
 
-      if (!response.ok) {
-        throw new Error(`Livescore API error: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`Livescore: ${response.status}`);
       const data = await response.json();
       return this.parseLivescoreData(data);
     } catch (error) {
-      console.error('Livescore API error:', error);
+      console.error('Livescore error:', error);
       return [];
     }
   }
@@ -120,43 +105,54 @@ class LiveDataFetcher {
   private async fetchFromFootball(): Promise<Match[]> {
     try {
       const response = await fetch(`https://${this.RAPIDAPI_HOST_FOOTBALL}/v3/fixtures?live=all`, {
-        method: 'GET',
         headers: {
           'X-RapidAPI-Key': this.RAPIDAPI_KEY,
           'X-RapidAPI-Host': this.RAPIDAPI_HOST_FOOTBALL
         }
       });
 
-      if (!response.ok) {
-        throw new Error(`Football API error: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`Football: ${response.status}`);
       const data = await response.json();
       return this.parseFootballData(data);
     } catch (error) {
-      console.error('Football API error:', error);
+      console.error('Football error:', error);
       return [];
     }
   }
 
-  private async fetchFromAllSports(): Promise<Match[]> {
+  private async fetchBasketball(): Promise<Match[]> {
     try {
-      const response = await fetch(`https://${this.RAPIDAPI_HOST_ALLSPORTS}/api/basketball/matches/live`, {
-        method: 'GET',
+      const response = await fetch(`https://${this.RAPIDAPI_HOST_BASKETBALL}/games?live=all`, {
         headers: {
           'X-RapidAPI-Key': this.RAPIDAPI_KEY,
-          'X-RapidAPI-Host': this.RAPIDAPI_HOST_ALLSPORTS
+          'X-RapidAPI-Host': this.RAPIDAPI_HOST_BASKETBALL
         }
       });
 
-      if (!response.ok) {
-        throw new Error(`AllSports API error: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`Basketball: ${response.status}`);
       const data = await response.json();
-      return this.parseAllSportsData(data);
+      return this.parseBasketballData(data);
     } catch (error) {
-      console.error('AllSports API error:', error);
+      console.error('Basketball error:', error);
+      return [];
+    }
+  }
+
+  private async fetchTennis(): Promise<Match[]> {
+    try {
+      // Tennis from Livescore API
+      const response = await fetch(`https://${this.RAPIDAPI_HOST_LIVESCORE}/matches/v2/list-live?Category=tennis`, {
+        headers: {
+          'X-RapidAPI-Key': this.RAPIDAPI_KEY,
+          'X-RapidAPI-Host': this.RAPIDAPI_HOST_LIVESCORE
+        }
+      });
+
+      if (!response.ok) throw new Error(`Tennis: ${response.status}`);
+      const data = await response.json();
+      return this.parseTennisData(data);
+    } catch (error) {
+      console.error('Tennis error:', error);
       return [];
     }
   }
@@ -172,35 +168,22 @@ class LiveDataFetcher {
               id: `livescore-${event.Eid}`,
               home: event.T1?.[0]?.Nm || 'Unknown',
               away: event.T2?.[0]?.Nm || 'Unknown',
-              league: stage.Snm || 'Unknown League',
+              league: stage.Snm || 'Unknown',
               country: stage.Ccd || 'Unknown',
               sport: 'football',
-              status: this.mapLivescoreStatus(event.Eps),
-              homeScore: event.Tr1 || 0,
-              awayScore: event.Tr2 || 0,
-              minute: event.Eps === 'LIVE' ? (event.Epr || 0) : undefined,
-              score: event.Eps === 'LIVE' || event.Eps === 'FT' ? `${event.Tr1 || 0} - ${event.Tr2 || 0}` : undefined,
-              time: event.Esd ? new Date(event.Esd * 1000).toISOString() : new Date().toISOString(),
-              statistics: event.stats ? {
-                corners: event.stats.corners,
-                cards: event.stats.cards,
-                shots: event.stats.shots,
-                shotsOnTarget: event.stats.shotsOnTarget,
-                possession: event.stats.possession,
-                attacks: event.stats.attacks,
-                dangerousAttacks: event.stats.dangerousAttacks
-              } : undefined,
-              odds: event.odds ? {
-                home: event.odds.home,
-                draw: event.odds.draw,
-                away: event.odds.away
-              } : undefined
+              status: this.mapStatus(event.Eps),
+              homeScore: event.Tr1,
+              awayScore: event.Tr2,
+              minute: event.Epr,
+              score: `${event.Tr1 || 0} - ${event.Tr2 || 0}`,
+              time: new Date(event.Esd * 1000).toISOString(),
+              odds: this.extractOdds(event)
             });
           });
         });
       }
     } catch (error) {
-      console.error('Error parsing Livescore data:', error);
+      console.error('Parse Livescore error:', error);
     }
 
     return matches;
@@ -216,88 +199,158 @@ class LiveDataFetcher {
             id: `football-${fixture.fixture?.id}`,
             home: fixture.teams?.home?.name || 'Unknown',
             away: fixture.teams?.away?.name || 'Unknown',
-            league: fixture.league?.name || 'Unknown League',
+            league: fixture.league?.name || 'Unknown',
             country: fixture.league?.country || 'Unknown',
             sport: 'football',
             status: this.mapFootballStatus(fixture.fixture?.status?.short),
             homeScore: fixture.goals?.home,
             awayScore: fixture.goals?.away,
             minute: fixture.fixture?.status?.elapsed,
-            score: fixture.goals?.home !== undefined ? `${fixture.goals.home} - ${fixture.goals.away}` : undefined,
+            score: `${fixture.goals?.home || 0} - ${fixture.goals?.away || 0}`,
             time: fixture.fixture?.date || new Date().toISOString(),
-            statistics: fixture.statistics ? {
-              corners: fixture.statistics.corners,
-              cards: (fixture.statistics.yellow_cards || 0) + (fixture.statistics.red_cards || 0),
-              shots: fixture.statistics.shots_total,
-              shotsOnTarget: fixture.statistics.shots_on_target,
-              possession: fixture.statistics.possession,
-              attacks: fixture.statistics.attacks,
-              dangerousAttacks: fixture.statistics.dangerous_attacks
-            } : undefined,
-            odds: fixture.odds ? {
-              home: fixture.odds.home,
-              draw: fixture.odds.draw,
-              away: fixture.odds.away,
-              over25: fixture.odds.over_2_5,
-              under25: fixture.odds.under_2_5
-            } : undefined
+            statistics: this.extractStats(fixture),
+            odds: this.extractFootballOdds(fixture)
           });
         });
       }
     } catch (error) {
-      console.error('Error parsing Football data:', error);
+      console.error('Parse Football error:', error);
     }
 
     return matches;
   }
 
-  private parseAllSportsData(data: any): Match[] {
+  private parseBasketballData(data: any): Match[] {
     const matches: Match[] = [];
     
     try {
-      if (data?.events) {
-        data.events.forEach((event: any) => {
+      if (data?.response) {
+        data.response.forEach((game: any) => {
           matches.push({
-            id: `allsports-${event.id}`,
-            home: event.homeTeam?.name || 'Unknown',
-            away: event.awayTeam?.name || 'Unknown',
-            league: event.tournament?.name || 'Unknown League',
-            country: event.tournament?.category?.name || 'Unknown',
+            id: `basketball-${game.id}`,
+            home: game.teams?.home?.name || 'Unknown',
+            away: game.teams?.away?.name || 'Unknown',
+            league: game.league?.name || 'Unknown',
+            country: game.country?.name || 'Unknown',
             sport: 'basketball',
-            status: this.mapAllSportsStatus(event.status?.type),
-            homeScore: event.homeScore?.current,
-            awayScore: event.awayScore?.current,
-            minute: event.status?.type === 'inprogress' ? 20 : undefined,
-            score: event.homeScore?.current !== undefined ? `${event.homeScore.current} - ${event.awayScore.current}` : undefined,
-            time: event.startTimestamp ? new Date(event.startTimestamp * 1000).toISOString() : new Date().toISOString()
+            status: this.mapBasketballStatus(game.status?.short),
+            homeScore: game.scores?.home?.total,
+            awayScore: game.scores?.away?.total,
+            minute: game.status?.timer ? Math.floor(game.status.timer / 60) : undefined,
+            score: `${game.scores?.home?.total || 0} - ${game.scores?.away?.total || 0}`,
+            time: game.date || new Date().toISOString(),
+            odds: this.extractBasketballOdds(game)
           });
         });
       }
     } catch (error) {
-      console.error('Error parsing AllSports data:', error);
+      console.error('Parse Basketball error:', error);
     }
 
     return matches;
   }
 
-  private mapLivescoreStatus(status: string): 'live' | 'scheduled' | 'finished' {
+  private parseTennisData(data: any): Match[] {
+    const matches: Match[] = [];
+    
+    try {
+      if (data?.Stages) {
+        data.Stages.forEach((stage: any) => {
+          stage.Events?.forEach((event: any) => {
+            matches.push({
+              id: `tennis-${event.Eid}`,
+              home: event.T1?.[0]?.Nm || 'Unknown',
+              away: event.T2?.[0]?.Nm || 'Unknown',
+              league: stage.Snm || 'Unknown',
+              country: stage.Ccd || 'Unknown',
+              sport: 'tennis',
+              status: this.mapStatus(event.Eps),
+              homeScore: event.Tr1,
+              awayScore: event.Tr2,
+              score: `${event.Tr1 || 0} - ${event.Tr2 || 0}`,
+              time: new Date(event.Esd * 1000).toISOString(),
+              odds: this.extractOdds(event)
+            });
+          });
+        });
+      }
+    } catch (error) {
+      console.error('Parse Tennis error:', error);
+    }
+
+    return matches;
+  }
+
+  private extractOdds(event: any): any {
+    // Extract real odds from API if available
+    if (event.odds) {
+      return {
+        home: event.odds.home || undefined,
+        draw: event.odds.draw || undefined,
+        away: event.odds.away || undefined,
+        over25: event.odds.over_2_5 || undefined,
+        under25: event.odds.under_2_5 || undefined
+      };
+    }
+    return undefined;
+  }
+
+  private extractFootballOdds(fixture: any): any {
+    // Check for odds in fixture
+    if (fixture.odds && fixture.odds.length > 0) {
+      const mainOdds = fixture.odds[0]?.values || [];
+      return {
+        home: mainOdds.find((o: any) => o.value === 'Home')?.odd,
+        draw: mainOdds.find((o: any) => o.value === 'Draw')?.odd,
+        away: mainOdds.find((o: any) => o.value === 'Away')?.odd
+      };
+    }
+    return undefined;
+  }
+
+  private extractBasketballOdds(game: any): any {
+    if (game.odds) {
+      return {
+        home: game.odds.home,
+        away: game.odds.away
+      };
+    }
+    return undefined;
+  }
+
+  private extractStats(fixture: any): any {
+    if (!fixture.statistics) return undefined;
+    
+    const stats: any = {};
+    fixture.statistics.forEach((team: any) => {
+      team.statistics?.forEach((stat: any) => {
+        if (stat.type === 'Corner Kicks') stats.corners = (stats.corners || 0) + (stat.value || 0);
+        if (stat.type === 'Yellow Cards') stats.cards = (stats.cards || 0) + (stat.value || 0);
+        if (stat.type === 'Total Shots') stats.shots = (stats.shots || 0) + (stat.value || 0);
+        if (stat.type === 'Shots on Goal') stats.shotsOnTarget = (stats.shotsOnTarget || 0) + (stat.value || 0);
+      });
+    });
+    
+    return Object.keys(stats).length > 0 ? stats : undefined;
+  }
+
+  private mapStatus(status: string): 'live' | 'scheduled' | 'finished' {
     if (status === 'LIVE') return 'live';
-    if (status === 'FT' || status === 'AET' || status === 'PEN') return 'finished';
+    if (['FT', 'AET', 'PEN'].includes(status)) return 'finished';
     return 'scheduled';
   }
 
   private mapFootballStatus(status: string): 'live' | 'scheduled' | 'finished' {
-    const liveStatuses = ['1H', '2H', 'HT', 'ET', 'P'];
-    const finishedStatuses = ['FT', 'AET', 'PEN'];
-    
-    if (liveStatuses.includes(status)) return 'live';
-    if (finishedStatuses.includes(status)) return 'finished';
+    const live = ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'];
+    const finished = ['FT', 'AET', 'PEN'];
+    if (live.includes(status)) return 'live';
+    if (finished.includes(status)) return 'finished';
     return 'scheduled';
   }
 
-  private mapAllSportsStatus(status: string): 'live' | 'scheduled' | 'finished' {
-    if (status === 'inprogress') return 'live';
-    if (status === 'finished') return 'finished';
+  private mapBasketballStatus(status: string): 'live' | 'scheduled' | 'finished' {
+    if (['Q1', 'Q2', 'Q3', 'Q4', 'OT', 'BT'].includes(status)) return 'live';
+    if (status === 'FT') return 'finished';
     return 'scheduled';
   }
 
