@@ -166,6 +166,17 @@ export default function HomePage() {
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                 <span className="text-sm font-semibold text-green-400">Live</span>
               </div>
+              
+              {/* ML Stats Button */}
+              <Link 
+                href="/ml-stats" 
+                className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition flex items-center gap-2 font-semibold"
+              >
+                <span>🧠</span>
+                <span className="hidden sm:inline">ML Stats</span>
+              </Link>
+              
+              {/* Settings Button */}
               <Link 
                 href="/settings" 
                 className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition flex items-center gap-2 font-semibold"
@@ -268,7 +279,7 @@ export default function HomePage() {
                     </div>
 
                     {/* Teams and Score */}
-                    <div className="font-bold text-lg mb-2 flex items-center gap-3">
+                    <div className="font-bold text-lg mb-2 flex items-center gap-3 flex-wrap">
                       <span>{match.home}</span>
                       {match.score ? (
                         <span className="text-blue-400 font-bold text-xl px-3 py-1 bg-blue-900/30 rounded">
@@ -297,7 +308,7 @@ export default function HomePage() {
                         <span className="font-semibold text-yellow-400">{match.odds}</span>
                       </div>
                       {match.valuePercentage > 10 && (
-                        <div className="bg-cyan-500/20 px-2 py-1 rounded text-cyan-400 font-semibold">
+                        <div className="bg-cyan-500/20 px-2 py-1 rounded text-cyan-400 font-semibold text-xs">
                           💎 Value +{match.valuePercentage}%
                         </div>
                       )}
@@ -306,7 +317,7 @@ export default function HomePage() {
                     {/* AI Reasoning */}
                     {match.reasoning && (
                       <div className="mt-2 text-xs text-gray-400 italic">
-                        🤖 {match.reasoning}
+                        {match.reasoning}
                       </div>
                     )}
                   </div>
@@ -340,10 +351,14 @@ export default function HomePage() {
       {/* Footer Info */}
       <div className="container mx-auto px-4 py-6 text-center text-sm text-gray-500">
         <p>Ostatnia aktualizacja: {new Date().toLocaleTimeString('pl-PL')}</p>
-        <p className="mt-2">
-          💡 Dane odświeżają się automatycznie co minutę. 
-          <Link href="/settings" className="text-blue-400 hover:underline ml-2">
+        <p className="mt-2 flex items-center justify-center gap-2 flex-wrap">
+          <span>💡 Dane odświeżają się automatycznie co minutę.</span>
+          <Link href="/settings" className="text-blue-400 hover:underline">
             Zmień filtry →
+          </Link>
+          <span>|</span>
+          <Link href="/ml-stats" className="text-purple-400 hover:underline">
+            Zobacz statystyki ML 🧠
           </Link>
         </p>
       </div>
