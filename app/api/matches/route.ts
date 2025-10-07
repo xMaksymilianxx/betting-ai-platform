@@ -32,26 +32,34 @@ export async function GET(request: NextRequest) {
     // Fetch real matches from all APIs
     const liveMatches = await liveDataFetcher.fetchAllMatches();
     
-    console.log(`✅ Fetched ${liveMatches.length} real matches`);
+    console.log(`✅ Fetched ${liveMatches.length} real matches from APIs`);
 
     // Process each match with AI predictions
     const processedMatches = liveMatches.map(match => {
-      // Generate AI prediction
-      const prediction = match.status === 'live' 
-        ? predictionEngine.calculatePrediction({
-            home: match.home,
-            away: match.away,
-            league: match.league,
-            homeScore: match.homeScore,
-            awayScore: match.awayScore,
-            minute: match.minute,
-            statistics: match.statistics
-          })
-        : predictionEngine.calculatePreMatchPrediction({
-            home: match.home,
-            away: match.away,
-            league: match.league
-          });
+      // ONLY use AI for LIVE matches with actual scores + statistics
+      let prediction;
+      
+      if (match.status === 'live' && match.homeScore !== undefined && match.awayScore !== undefined) {
+        // Live match - use FULL data for high accuracy
+        prediction = predictionEngine.calculatePrediction({
+          home: match.home,
+          away: match.away,
+          league: match.league,
+          homeScore: match.homeScore,
+          awayScore: match.awayScore,
+          minute: match.minute,
+          statistics: match.statistics, // FULL stats
+          odds: match.odds // REAL odds from API
+        });
+      } else {
+        // Pre-match or scheduled - limited data, lower confidence
+        prediction = predictionEngine.calculatePreMatchPrediction({
+          home: match.home,
+          away: match.away,
+          league: match.league,
+          odds: match.odds // Use real odds if available
+        });
+      }
 
       // Determine if it's a top league
       const topLeagues = [
@@ -71,7 +79,7 @@ export async function GET(request: NextRequest) {
         betType: prediction.betType,
         prediction: prediction.prediction,
         confidence: prediction.confidence,
-        odds: prediction.odds.toFixed(2),
+        odds: typeof prediction.odds === 'number' ? prediction.odds.toFixed(2) : prediction.odds,
         hasFullStats: match.statistics !== undefined,
         status: match.status,
         minute: match.minute,
@@ -89,8 +97,15 @@ export async function GET(request: NextRequest) {
 
     console.log(`🤖 Processed ${processedMatches.length} matches with AI predictions`);
 
-    // Apply filters with IMPROVED bet type matching
+    // Apply filters with IMPROVED logic
     const filteredMatches = processedMatches.filter(match => {
+      
+      // ❌ FILTER OUT: Finished pre-match matches (unreliable predictions)
+      if (match.status === 'finished' && match.matchTimeType === 'prematch') {
+        console.log(`❌ Skipped finished pre-match: ${match.home} vs ${match.away}`);
+        return false;
+      }
+      
       // Confidence filter
       if (match.confidence < filters.minConfidence) {
         return false;
@@ -133,7 +148,6 @@ export async function GET(request: NextRequest) {
       });
 
       if (!hasMatchingBetType) {
-        console.log(`❌ Filtered: ${match.betType} not in [${filters.betTypes.join(', ')}]`);
         return false;
       }
       
@@ -186,8 +200,17 @@ export async function GET(request: NextRequest) {
     console.log(`✅ After filtering: ${filteredMatches.length} matches`);
     console.log(`❌ Filtered out: ${processedMatches.length - filteredMatches.length} matches`);
 
-    // Sort by confidence descending
-    filteredMatches.sort((a, b) => b.confidence - a.confidence);
+    // Sort by: live first, then by confidence + value
+    filteredMatches.sort((a, b) => {
+      // Prioritize: live > scheduled
+      if (a.status === 'live' && b.status !== 'live') return -1;
+      if (a.status !== 'live' && b.status === 'live') return 1;
+      
+      // Then by confidence + value score
+      const scoreA = a.confidence * 0.7 + a.valuePercentage * 0.3;
+      const scoreB = b.confidence * 0.7 + b.valuePercentage * 0.3;
+      return scoreB - scoreA;
+    });
 
     return NextResponse.json({
       success: true,
@@ -196,7 +219,7 @@ export async function GET(request: NextRequest) {
       totalAvailable: processedMatches.length,
       filtersApplied: filters,
       timestamp: new Date().toISOString(),
-      source: 'LIVE_API'
+      source: 'LIVE_API_WITH_FULL_STATS'
     });
 
   } catch (error) {
