@@ -2,146 +2,80 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import MatchCard from '@/components/MatchCard';
+import FilterPanel from '@/components/FilterPanel';
 
-interface Match {
-  id: string;
-  home: string;
-  away: string;
-  league: string;
-  country?: string;
-  sport: string;
-  betType: string;
-  prediction?: string;
-  confidence: number;
-  odds: string;
-  status: string;
-  minute?: number;
-  score?: string;
-  time: string;
-  roi: number;
-  accuracy: number;
-  valuePercentage: number;
-  reasoning?: string;
-}
-
-export default function HomePage() {
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function Home() {
+  const [matches, setMatches] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState({
+    minConfidence: 0,
+    showAllLeagues: true,
+    sports: ['football'],
+    matchStatus: ['live', 'scheduled'],
+    betTypes: ['1X2', 'Over/Under', 'BTTS'],
+    minOdds: 1.01,
+    maxOdds: 100,
+    matchTime: ['prematch', 'live'],
+    onlyValueBets: false,
+    minValuePercentage: 0
+  });
   const [stats, setStats] = useState({
-    totalMatches: 0,
+    count: 0,
     avgConfidence: 0,
     avgROI: 0,
     valueBets: 0
   });
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
-  const loadMatches = async () => {
+  // Manual fetch function
+  const fetchMatches = async () => {
     setLoading(true);
     try {
-      const savedSettings = localStorage.getItem('filterSettings');
-      const settings = savedSettings ? JSON.parse(savedSettings) : {
-        minConfidence: 0,
-        showAllLeagues: true,
-        sports: ['football', 'basketball', 'tennis', 'hockey'],
-        requireFullStats: false,
-        matchStatus: ['live', 'scheduled'],
-        betTypes: ['1X2', 'BTTS', 'Over/Under', 'Handicap', 'Corners', 'Cards'],
-        minOdds: 1.01,
-        maxOdds: 100,
-        minROI: -100,
-        minAccuracy: 0,
-        minSampleSize: 0,
-        showArchive: false,
-        daysBack: 7,
-        matchTime: ['prematch', 'live'],
-        onlyValueBets: false,
-        minValuePercentage: 0,
-      };
-
       const params = new URLSearchParams({
-        minConfidence: settings.minConfidence.toString(),
-        showAllLeagues: settings.showAllLeagues.toString(),
-        sports: settings.sports.join(','),
-        requireFullStats: settings.requireFullStats.toString(),
-        matchStatus: settings.matchStatus.join(','),
-        betTypes: settings.betTypes.join(','),
-        minOdds: settings.minOdds.toString(),
-        maxOdds: settings.maxOdds.toString(),
-        minROI: settings.minROI.toString(),
-        minAccuracy: settings.minAccuracy.toString(),
-        minSampleSize: settings.minSampleSize.toString(),
-        showArchive: settings.showArchive.toString(),
-        daysBack: settings.daysBack.toString(),
-        matchTime: settings.matchTime.join(','),
-        onlyValueBets: settings.onlyValueBets.toString(),
-        minValuePercentage: settings.minValuePercentage.toString(),
+        minConfidence: filters.minConfidence.toString(),
+        showAllLeagues: filters.showAllLeagues.toString(),
+        sports: filters.sports.join(','),
+        matchStatus: filters.matchStatus.join(','),
+        betTypes: filters.betTypes.join(','),
+        minOdds: filters.minOdds.toString(),
+        maxOdds: filters.maxOdds.toString(),
+        matchTime: filters.matchTime.join(','),
+        onlyValueBets: filters.onlyValueBets.toString(),
+        minValuePercentage: filters.minValuePercentage.toString()
       });
 
       const response = await fetch(`/api/matches?${params}`);
       const data = await response.json();
 
-      console.log('✅ Loaded data:', data);
-      
-      if (data.success && Array.isArray(data.matches)) {
+      if (data.success) {
         setMatches(data.matches);
         
-        const avgConf = data.matches.length > 0
-          ? data.matches.reduce((sum: number, m: Match) => sum + m.confidence, 0) / data.matches.length
-          : 0;
-        const avgRoi = data.matches.length > 0
-          ? data.matches.reduce((sum: number, m: Match) => sum + m.roi, 0) / data.matches.length
-          : 0;
-        const valueBetsCount = data.matches.filter((m: Match) => m.valuePercentage > 10).length;
-
+        // Calculate stats
+        const avgConf = data.matches.reduce((acc: number, m: any) => acc + m.confidence, 0) / (data.matches.length || 1);
+        const avgRoi = data.matches.reduce((acc: number, m: any) => acc + m.roi, 0) / (data.matches.length || 1);
+        const valueBets = data.matches.filter((m: any) => m.valuePercentage >= 10).length;
+        
         setStats({
-          totalMatches: data.count || 0,
+          count: data.matches.length,
           avgConfidence: Math.round(avgConf),
           avgROI: Math.round(avgRoi),
-          valueBets: valueBetsCount
+          valueBets
         });
-      } else {
-        console.warn('Invalid data format:', data);
-        setMatches([]);
+        
+        setLastUpdate(new Date());
       }
     } catch (error) {
-      console.error('❌ Error loading matches:', error);
-      setMatches([]);
+      console.error('Error fetching matches:', error);
     } finally {
       setLoading(false);
     }
   };
 
+  // Initial load (empty - user must click refresh)
   useEffect(() => {
-    loadMatches();
-    
-    const handleSettingsChange = () => {
-      console.log('⚙️ Settings changed, reloading...');
-      loadMatches();
-    };
-    window.addEventListener('settingsChanged', handleSettingsChange);
-    
-    const interval = setInterval(loadMatches, 60000);
-    
-    return () => {
-      window.removeEventListener('settingsChanged', handleSettingsChange);
-      clearInterval(interval);
-    };
+    // Don't auto-load to save API calls
   }, []);
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'live': return 'bg-red-500';
-      case 'scheduled': return 'bg-blue-500';
-      case 'finished': return 'bg-gray-500';
-      default: return 'bg-gray-500';
-    }
-  };
-
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 80) return 'text-green-400';
-    if (confidence >= 60) return 'text-yellow-400';
-    if (confidence >= 40) return 'text-orange-400';
-    return 'text-red-400';
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
@@ -150,217 +84,115 @@ export default function HomePage() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-2xl">
-                🎯
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                <span className="text-2xl">🎯</span>
               </div>
               <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                  Betting AI
-                </h1>
-                <p className="text-xs text-gray-400">Zaawansowana platforma AI</p>
+                <h1 className="text-2xl font-bold">Betting AI</h1>
+                <p className="text-sm text-gray-400">Zaawansowana platforma AI</p>
               </div>
             </div>
             
             <div className="flex items-center gap-3">
-              <div className="bg-green-500/20 px-3 py-1 rounded-full flex items-center gap-2">
+              {lastUpdate && (
+                <span className="text-xs text-gray-400">
+                  Ostatnia aktualizacja: {lastUpdate.toLocaleTimeString('pl-PL')}
+                </span>
+              )}
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 rounded-full">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-semibold text-green-400">Live</span>
+                <span className="text-sm text-green-400">Live</span>
               </div>
-              
-              {/* ML Stats Button */}
-              <Link 
-                href="/ml-stats" 
-                className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition flex items-center gap-2 font-semibold"
-              >
-                <span>🧠</span>
-                <span className="hidden sm:inline">ML Stats</span>
+              <Link href="/ml-stats" className="p-2 hover:bg-gray-700 rounded-lg transition">
+                🧠
               </Link>
-              
-              {/* Settings Button */}
-              <Link 
-                href="/settings" 
-                className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition flex items-center gap-2 font-semibold"
-              >
-                <span>⚙️</span>
-                <span className="hidden sm:inline">Ustawienia</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats Dashboard */}
-      <div className="container mx-auto px-4 py-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-gradient-to-br from-blue-900/50 to-blue-800/30 p-4 rounded-xl border border-blue-700/50">
-            <div className="text-sm text-blue-300 mb-1">Wszystkie mecze</div>
-            <div className="text-3xl font-bold text-blue-400">{stats.totalMatches}</div>
-          </div>
-          <div className="bg-gradient-to-br from-green-900/50 to-green-800/30 p-4 rounded-xl border border-green-700/50">
-            <div className="text-sm text-green-300 mb-1">Śr. pewność</div>
-            <div className="text-3xl font-bold text-green-400">{stats.avgConfidence}%</div>
-          </div>
-          <div className="bg-gradient-to-br from-purple-900/50 to-purple-800/30 p-4 rounded-xl border border-purple-700/50">
-            <div className="text-sm text-purple-300 mb-1">Śr. ROI</div>
-            <div className={`text-3xl font-bold ${stats.avgROI >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {stats.avgROI > 0 ? '+' : ''}{stats.avgROI}%
-            </div>
-          </div>
-          <div className="bg-gradient-to-br from-cyan-900/50 to-cyan-800/30 p-4 rounded-xl border border-cyan-700/50">
-            <div className="text-sm text-cyan-300 mb-1">Value Bets</div>
-            <div className="text-3xl font-bold text-cyan-400">{stats.valueBets}</div>
-          </div>
-        </div>
-
-        {/* Matches List */}
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="text-center">
-              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-gray-400">Ładowanie meczów z API...</p>
-            </div>
-          </div>
-        ) : matches.length === 0 ? (
-          <div className="bg-gray-800/50 rounded-xl border border-gray-700 p-12 text-center">
-            <div className="text-6xl mb-4">🔍</div>
-            <h3 className="text-2xl font-bold mb-2">Brak meczów</h3>
-            <p className="text-gray-400 mb-6">
-              Nie znaleziono meczów spełniających wybrane filtry lub API nie zwróciło danych.
-            </p>
-            <Link 
-              href="/settings"
-              className="inline-block bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold transition"
-            >
-              ⚙️ Zmień ustawienia filtrów
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">📋 Znalezione mecze ({matches.length})</h2>
-              <button 
-                onClick={loadMatches}
-                className="text-sm text-gray-400 hover:text-white transition flex items-center gap-2"
-              >
-                <span>🔄</span>
-                <span>Odśwież</span>
+              <button className="p-2 hover:bg-gray-700 rounded-lg transition">
+                ⚙️
               </button>
             </div>
-
-            {matches.map((match) => (
-              <div 
-                key={match.id}
-                className="bg-gray-800/50 hover:bg-gray-800/70 rounded-xl border border-gray-700 p-4 transition cursor-pointer"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    {/* Match Header */}
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className={`px-2 py-1 rounded text-xs font-bold ${getStatusColor(match.status)}`}>
-                        {match.status === 'live' && match.minute ? (
-                          <>🔴 LIVE {match.minute}&apos;</>
-                        ) : match.status === 'live' ? (
-                          '🔴 LIVE'
-                        ) : match.status === 'scheduled' ? (
-                          '📅 Nadchodzi'
-                        ) : (
-                          '✅ Zakończony'
-                        )}
-                      </span>
-                      <span className="text-sm text-gray-400">{match.league}</span>
-                      {match.country && (
-                        <>
-                          <span className="text-xs text-gray-500">•</span>
-                          <span className="text-xs text-gray-500">{match.country}</span>
-                        </>
-                      )}
-                      <span className="text-xs text-gray-500">•</span>
-                      <span className="text-sm text-gray-500">{match.sport}</span>
-                    </div>
-
-                    {/* Teams and Score */}
-                    <div className="font-bold text-lg mb-2 flex items-center gap-3 flex-wrap">
-                      <span>{match.home}</span>
-                      {match.score ? (
-                        <span className="text-blue-400 font-bold text-xl px-3 py-1 bg-blue-900/30 rounded">
-                          {match.score}
-                        </span>
-                      ) : (
-                        <span className="text-gray-500">vs</span>
-                      )}
-                      <span>{match.away}</span>
-                    </div>
-
-                    {/* Bet Info */}
-                    <div className="flex items-center gap-4 text-sm flex-wrap">
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-400">Typ:</span>
-                        <span className="font-semibold text-purple-400">{match.betType}</span>
-                      </div>
-                      {match.prediction && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400">Predykcja:</span>
-                          <span className="font-semibold text-cyan-400">{match.prediction}</span>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-400">Kurs:</span>
-                        <span className="font-semibold text-yellow-400">{match.odds}</span>
-                      </div>
-                      {match.valuePercentage > 10 && (
-                        <div className="bg-cyan-500/20 px-2 py-1 rounded text-cyan-400 font-semibold text-xs">
-                          💎 Value +{match.valuePercentage}%
-                        </div>
-                      )}
-                    </div>
-
-                    {/* AI Reasoning */}
-                    {match.reasoning && (
-                      <div className="mt-2 text-xs text-gray-400 italic">
-                        {match.reasoning}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Stats */}
-                  <div className="flex flex-col items-end gap-2">
-                    <div className={`text-3xl font-bold ${getConfidenceColor(match.confidence)}`}>
-                      {match.confidence}%
-                    </div>
-                    <div className="text-xs text-gray-400">Pewność AI</div>
-                    {match.roi >= 0 ? (
-                      <div className="text-sm font-semibold text-green-400">
-                        ROI: +{match.roi}%
-                      </div>
-                    ) : (
-                      <div className="text-sm font-semibold text-red-400">
-                        ROI: {match.roi}%
-                      </div>
-                    )}
-                    <div className="text-xs text-gray-500">
-                      Accuracy: {match.accuracy}%
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Footer Info */}
-      <div className="container mx-auto px-4 py-6 text-center text-sm text-gray-500">
-        <p>Ostatnia aktualizacja: {new Date().toLocaleTimeString('pl-PL')}</p>
-        <p className="mt-2 flex items-center justify-center gap-2 flex-wrap">
-          <span>💡 Dane odświeżają się automatycznie co minutę.</span>
-          <Link href="/settings" className="text-blue-400 hover:underline">
-            Zmień filtry →
-          </Link>
-          <span>|</span>
-          <Link href="/ml-stats" className="text-purple-400 hover:underline">
-            Zobacz statystyki ML 🧠
-          </Link>
-        </p>
+      <div className="container mx-auto px-4 py-6">
+        {/* Stats Bar */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-gray-800/50 backdrop-blur rounded-xl p-4 border border-gray-700">
+            <div className="text-sm text-gray-400 mb-1">Wszystkie mecze</div>
+            <div className="text-3xl font-bold text-blue-400">{stats.count}</div>
+          </div>
+          <div className="bg-gray-800/50 backdrop-blur rounded-xl p-4 border border-gray-700">
+            <div className="text-sm text-gray-400 mb-1">Śr. pewność</div>
+            <div className="text-3xl font-bold text-green-400">{stats.avgConfidence}%</div>
+          </div>
+          <div className="bg-gray-800/50 backdrop-blur rounded-xl p-4 border border-gray-700">
+            <div className="text-sm text-gray-400 mb-1">Śr. ROI</div>
+            <div className="text-3xl font-bold text-purple-400">+{stats.avgROI}%</div>
+          </div>
+          <div className="bg-gray-800/50 backdrop-blur rounded-xl p-4 border border-gray-700">
+            <div className="text-sm text-gray-400 mb-1">Value Bets</div>
+            <div className="text-3xl font-bold text-yellow-400">{stats.valueBets}</div>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <FilterPanel filters={filters} setFilters={setFilters} />
+
+        {/* Matches List */}
+        <div className="bg-gray-800/30 backdrop-blur rounded-xl p-6 border border-gray-700">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <span>📋</span>
+              <span>Znalezione mecze ({stats.count})</span>
+            </h2>
+            
+            {/* MANUAL REFRESH BUTTON */}
+            <button
+              onClick={fetchMatches}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-lg transition"
+            >
+              <span className={loading ? 'animate-spin' : ''}>🔄</span>
+              <span>{loading ? 'Ładowanie...' : 'Odśwież'}</span>
+            </button>
+          </div>
+
+          {/* Empty State */}
+          {matches.length === 0 && !loading && (
+            <div className="text-center py-12 text-gray-400">
+              <div className="text-6xl mb-4">🎯</div>
+              <p className="text-lg mb-2">Kliknij "Odśwież" aby załadować mecze</p>
+              <p className="text-sm">Oszczędzaj limity API używając ręcznego odświeżania</p>
+            </div>
+          )}
+
+          {/* Loading State */}
+          {loading && (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-gray-400">Pobieranie meczów z API...</p>
+            </div>
+          )}
+
+          {/* Matches Grid */}
+          {!loading && matches.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {matches.map((match) => (
+                <MatchCard key={match.id} match={match} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer Info */}
+        <div className="mt-6 text-center text-sm text-gray-500">
+          <p>💡 Dane odświeżają się manualnie. Kliknij "Odśwież" aby zaktualizować.</p>
+          <p className="mt-1">
+            <Link href="/ml-stats" className="text-blue-400 hover:underline">
+              Zobacz statystyki ML 🧠
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );
