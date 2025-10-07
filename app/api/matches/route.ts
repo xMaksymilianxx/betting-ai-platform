@@ -27,20 +27,18 @@ export async function GET(request: NextRequest) {
     };
 
     console.log('🎛️ Applied filters:', filters);
-    console.log('🌐 Fetching REAL matches from APIs...');
+    console.log('🌐 Fetching matches...');
 
-    // Fetch real matches from all APIs
+    // Fetch real matches
     const liveMatches = await liveDataFetcher.fetchAllMatches();
     
-    console.log(`✅ Fetched ${liveMatches.length} real matches from APIs`);
+    console.log(`✅ Fetched ${liveMatches.length} matches`);
 
-    // Process each match with AI predictions
+    // Process with AI
     const processedMatches = liveMatches.map(match => {
-      // ONLY use AI for LIVE matches with actual scores + statistics
       let prediction;
       
       if (match.status === 'live' && match.homeScore !== undefined && match.awayScore !== undefined) {
-        // Live match - use FULL data for high accuracy
         prediction = predictionEngine.calculatePrediction({
           home: match.home,
           away: match.away,
@@ -48,20 +46,18 @@ export async function GET(request: NextRequest) {
           homeScore: match.homeScore,
           awayScore: match.awayScore,
           minute: match.minute,
-          statistics: match.statistics, // FULL stats
-          odds: match.odds // REAL odds from API
+          statistics: match.statistics,
+          odds: match.odds
         });
       } else {
-        // Pre-match or scheduled - limited data, lower confidence
         prediction = predictionEngine.calculatePreMatchPrediction({
           home: match.home,
           away: match.away,
           league: match.league,
-          odds: match.odds // Use real odds if available
+          odds: match.odds
         });
       }
 
-      // Determine if it's a top league
       const topLeagues = [
         'Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
         'Champions League', 'Europa League', 'Eredivisie', 'Primeira Liga',
@@ -95,40 +91,28 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    console.log(`🤖 Processed ${processedMatches.length} matches with AI predictions`);
+    console.log(`🤖 Processed ${processedMatches.length} with AI`);
 
-    // Apply filters with IMPROVED logic
+    // Apply filters
     const filteredMatches = processedMatches.filter(match => {
       
-      // ❌ FILTER OUT: Finished pre-match matches (unreliable predictions)
+      // Skip finished pre-match
       if (match.status === 'finished' && match.matchTimeType === 'prematch') {
-        console.log(`❌ Skipped finished pre-match: ${match.home} vs ${match.away}`);
         return false;
       }
       
-      // Confidence filter
-      if (match.confidence < filters.minConfidence) {
-        return false;
-      }
+      if (match.confidence < filters.minConfidence) return false;
+      if (!filters.sports.includes(match.sport)) return false;
       
-      // Sport filter
-      if (!filters.sports.includes(match.sport)) {
-        return false;
-      }
-      
-      // Bet type filter - IMPROVED LOGIC
+      // Bet type filter
       const hasMatchingBetType = filters.betTypes.some(filterType => {
         const filterTypeLower = filterType.toLowerCase().replace(/_/g, ' ');
         const matchBetTypeLower = match.betType.toLowerCase();
         
-        // Direct match
         if (matchBetTypeLower === filterTypeLower) return true;
-        
-        // Partial match
         if (matchBetTypeLower.includes(filterTypeLower)) return true;
         if (filterTypeLower.includes(matchBetTypeLower)) return true;
         
-        // Special mappings for bet types
         const mappings: Record<string, string[]> = {
           '1x2': ['1x2', 'match winner', 'full time result', '1 (home win)', '2 (away win)', 'x (draw)'],
           'btts': ['btts', 'both teams to score', 'both score'],
@@ -147,41 +131,19 @@ export async function GET(request: NextRequest) {
         return false;
       });
 
-      if (!hasMatchingBetType) {
-        return false;
-      }
-      
-      // League filter
-      if (!filters.showAllLeagues && !match.isTopLeague) {
-        return false;
-      }
-      
-      // Stats filter
+      if (!hasMatchingBetType) return false;
+      if (!filters.showAllLeagues && !match.isTopLeague) return false;
       if (filters.requireFullStats && !match.hasFullStats) return false;
-      
-      // Status filter
       if (!filters.matchStatus.includes(match.status)) return false;
-      
-      // Match time filter
       if (!filters.matchTime.includes(match.matchTimeType)) return false;
       
-      // Odds filter
       const odds = parseFloat(match.odds);
       if (odds < filters.minOdds || odds > filters.maxOdds) return false;
-      
-      // ROI filter
       if (match.roi < filters.minROI) return false;
-      
-      // Accuracy filter
       if (match.accuracy < filters.minAccuracy) return false;
-      
-      // Sample size filter
       if (match.sampleSize < filters.minSampleSize) return false;
-      
-      // Value bets filter
       if (filters.onlyValueBets && match.valuePercentage < filters.minValuePercentage) return false;
       
-      // Date filter
       if (!filters.showArchive) {
         const matchDate = new Date(match.time);
         const now = new Date();
@@ -197,16 +159,13 @@ export async function GET(request: NextRequest) {
       return true;
     });
 
-    console.log(`✅ After filtering: ${filteredMatches.length} matches`);
-    console.log(`❌ Filtered out: ${processedMatches.length - filteredMatches.length} matches`);
+    console.log(`✅ After filtering: ${filteredMatches.length}`);
 
-    // Sort by: live first, then by confidence + value
+    // Sort: live first, then by confidence + value
     filteredMatches.sort((a, b) => {
-      // Prioritize: live > scheduled
       if (a.status === 'live' && b.status !== 'live') return -1;
       if (a.status !== 'live' && b.status === 'live') return 1;
       
-      // Then by confidence + value score
       const scoreA = a.confidence * 0.7 + a.valuePercentage * 0.3;
       const scoreB = b.confidence * 0.7 + b.valuePercentage * 0.3;
       return scoreB - scoreA;
@@ -219,11 +178,11 @@ export async function GET(request: NextRequest) {
       totalAvailable: processedMatches.length,
       filtersApplied: filters,
       timestamp: new Date().toISOString(),
-      source: 'LIVE_API_WITH_FULL_STATS'
+      source: 'LIVE_API_WITH_FALLBACK'
     });
 
   } catch (error) {
-    console.error('❌ Error in matches API:', error);
+    console.error('❌ Error:', error);
     return NextResponse.json(
       { 
         success: false, 
