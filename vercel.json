@@ -1,0 +1,29 @@
+{
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "env": {
+    "FOOTBALL_DATA_API_KEY": "901f0e15a0314793abaf625692082910",
+    "SPORTMONKS_API_KEY": "GDkPEhJTHCqSscTnlGu2j87eG3Gw77ECv25j0nbnKbER9Gx6Oj7e6XRud0oh",
+    "LIVE_SCORE_API_KEY": "zKgVUXAz7Qp1abRF",
+    "LIVE_SCORE_API_SECRET": "FS5fjgjY6045388CSoyMm8mtZLv9WmOB",
+    "API_FOOTBALL_KEY": "ac0417c6e0dcfa236b146b9585892c9a"
+  },
+  "functions": {
+    "app/api/**/*.ts": {
+      "maxDuration": 60,
+      "memory": 3008
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/update-predictions",
+      "schedule": "0 */4 * * *"
+    },
+    {
+      "path": "/api/cron/retrain-models",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
