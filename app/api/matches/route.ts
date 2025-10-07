@@ -89,27 +89,58 @@ export async function GET(request: NextRequest) {
 
     console.log(`🤖 Processed ${processedMatches.length} matches with AI predictions`);
 
-    // Apply filters
+    // Apply filters with IMPROVED bet type matching
     const filteredMatches = processedMatches.filter(match => {
       // Confidence filter
-      if (match.confidence < filters.minConfidence) return false;
+      if (match.confidence < filters.minConfidence) {
+        return false;
+      }
       
       // Sport filter
-      if (!filters.sports.includes(match.sport)) return false;
+      if (!filters.sports.includes(match.sport)) {
+        return false;
+      }
       
-      // Bet type filter
-      const matchBetTypeBase = match.betType.split(' ')[0];
+      // Bet type filter - IMPROVED LOGIC
       const hasMatchingBetType = filters.betTypes.some(filterType => {
-        const filterTypeBase = filterType.replace('_', ' ').split(' ')[0];
-        return matchBetTypeBase.includes(filterTypeBase) || 
-               filterType.includes(matchBetTypeBase) ||
-               match.betType.includes(filterType) ||
-               filterType.includes('1X2') && matchBetTypeBase === '1X2';
+        const filterTypeLower = filterType.toLowerCase().replace(/_/g, ' ');
+        const matchBetTypeLower = match.betType.toLowerCase();
+        
+        // Direct match
+        if (matchBetTypeLower === filterTypeLower) return true;
+        
+        // Partial match
+        if (matchBetTypeLower.includes(filterTypeLower)) return true;
+        if (filterTypeLower.includes(matchBetTypeLower)) return true;
+        
+        // Special mappings for bet types
+        const mappings: Record<string, string[]> = {
+          '1x2': ['1x2', 'match winner', 'full time result', '1 (home win)', '2 (away win)', 'x (draw)'],
+          'btts': ['btts', 'both teams to score', 'both score'],
+          'over/under': ['over/under', 'total goals', 'goals over/under', 'over 2.5', 'under 2.5'],
+          'handicap': ['handicap', 'asian handicap', 'spread'],
+          'corners': ['corner', 'corners'],
+          'cards': ['card', 'cards', 'yellow', 'bookings']
+        };
+        
+        for (const [key, values] of Object.entries(mappings)) {
+          if (filterTypeLower.includes(key)) {
+            if (values.some(v => matchBetTypeLower.includes(v))) return true;
+          }
+        }
+        
+        return false;
       });
-      if (!hasMatchingBetType) return false;
+
+      if (!hasMatchingBetType) {
+        console.log(`❌ Filtered: ${match.betType} not in [${filters.betTypes.join(', ')}]`);
+        return false;
+      }
       
       // League filter
-      if (!filters.showAllLeagues && !match.isTopLeague) return false;
+      if (!filters.showAllLeagues && !match.isTopLeague) {
+        return false;
+      }
       
       // Stats filter
       if (filters.requireFullStats && !match.hasFullStats) return false;
