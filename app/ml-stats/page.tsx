@@ -49,11 +49,11 @@ export default function MLStatsPage() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Link href="/" className="text-blue-400 hover:text-blue-300">
+              <Link href="/" className="text-blue-400 hover:text-blue-300 transition">
                 ← Powrót
               </Link>
             </div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
+            <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
               <span>🧠</span>
               <span>Machine Learning Statistics</span>
             </h1>
@@ -65,8 +65,8 @@ export default function MLStatsPage() {
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         
         {/* Current Model Card */}
-        <div className="mb-8 p-6 bg-gradient-to-br from-blue-900/50 to-blue-800/30 rounded-xl border border-blue-700/50">
-          <div className="flex items-start justify-between mb-4">
+        <div className="mb-8 p-6 bg-gradient-to-br from-blue-900/50 to-blue-800/30 rounded-xl border border-blue-700/50 shadow-xl">
+          <div className="flex flex-col md:flex-row items-start justify-between mb-4 gap-4">
             <div>
               <h2 className="text-2xl font-bold text-blue-400 mb-2">
                 🤖 Current Model v{stats.currentModel.version}
@@ -84,25 +84,25 @@ export default function MLStatsPage() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-gray-800/50 p-4 rounded-lg">
+            <div className="bg-gray-800/50 p-4 rounded-lg backdrop-blur">
               <div className="text-2xl font-bold text-blue-400">
                 {stats.currentModel.totalPredictions}
               </div>
               <div className="text-sm text-gray-400">Total Predictions</div>
             </div>
-            <div className="bg-gray-800/50 p-4 rounded-lg">
+            <div className="bg-gray-800/50 p-4 rounded-lg backdrop-blur">
               <div className="text-2xl font-bold text-green-400">
                 {stats.currentModel.correctPredictions}
               </div>
               <div className="text-sm text-gray-400">Correct</div>
             </div>
-            <div className="bg-gray-800/50 p-4 rounded-lg">
+            <div className="bg-gray-800/50 p-4 rounded-lg backdrop-blur">
               <div className="text-2xl font-bold text-red-400">
                 {stats.currentModel.totalPredictions - stats.currentModel.correctPredictions}
               </div>
               <div className="text-sm text-gray-400">Incorrect</div>
             </div>
-            <div className="bg-gray-800/50 p-4 rounded-lg">
+            <div className="bg-gray-800/50 p-4 rounded-lg backdrop-blur">
               <div className="text-2xl font-bold text-purple-400">
                 {stats.recentAccuracy.toFixed(1)}%
               </div>
@@ -112,25 +112,25 @@ export default function MLStatsPage() {
         </div>
 
         {/* Best Model Card */}
-        <div className="mb-8 p-6 bg-gradient-to-br from-green-900/50 to-green-800/30 rounded-xl border border-green-700/50">
+        <div className="mb-8 p-6 bg-gradient-to-br from-green-900/50 to-green-800/30 rounded-xl border border-green-700/50 shadow-xl">
           <h2 className="text-2xl font-bold text-green-400 mb-4">
             🏆 Best Model Ever v{stats.bestModel.version}
           </h2>
           
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div className="bg-gray-800/50 p-4 rounded-lg">
+            <div className="bg-gray-800/50 p-4 rounded-lg backdrop-blur">
               <div className="text-2xl font-bold text-green-400">
                 {stats.bestModel.accuracy.toFixed(2)}%
               </div>
               <div className="text-sm text-gray-400">Best Accuracy</div>
             </div>
-            <div className="bg-gray-800/50 p-4 rounded-lg">
+            <div className="bg-gray-800/50 p-4 rounded-lg backdrop-blur">
               <div className="text-2xl font-bold text-blue-400">
                 {stats.bestModel.totalPredictions}
               </div>
               <div className="text-sm text-gray-400">Predictions</div>
             </div>
-            <div className="bg-gray-800/50 p-4 rounded-lg">
+            <div className="bg-gray-800/50 p-4 rounded-lg backdrop-blur">
               <div className="text-sm text-gray-400 mb-1">Achieved</div>
               <div className="text-sm font-semibold text-green-400">
                 {new Date(stats.bestModel.timestamp).toLocaleDateString('pl-PL')}
@@ -146,7 +146,7 @@ export default function MLStatsPage() {
         </div>
 
         {/* Accuracy by Bet Type */}
-        <div className="mb-8 p-6 bg-gray-800/50 rounded-xl border border-gray-700">
+        <div className="mb-8 p-6 bg-gray-800/50 rounded-xl border border-gray-700 shadow-xl">
           <h2 className="text-2xl font-bold mb-6">📊 Accuracy by Bet Type (Last 100 predictions)</h2>
           
           <div className="space-y-4">
@@ -183,7 +183,7 @@ export default function MLStatsPage() {
         </div>
 
         {/* ML Parameters */}
-        <div className="mb-8 p-6 bg-gray-800/50 rounded-xl border border-gray-700">
+        <div className="mb-8 p-6 bg-gray-800/50 rounded-xl border border-gray-700 shadow-xl">
           <h2 className="text-2xl font-bold mb-6">⚙️ Current ML Parameters</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -206,7 +206,7 @@ export default function MLStatsPage() {
         </div>
 
         {/* Learning Progress */}
-        <div className="mb-8 p-6 bg-gray-800/50 rounded-xl border border-gray-700">
+        <div className="mb-8 p-6 bg-gray-800/50 rounded-xl border border-gray-700 shadow-xl">
           <h2 className="text-2xl font-bold mb-6">📈 Learning Progress</h2>
           
           <div className="space-y-4">
@@ -258,7 +258,7 @@ export default function MLStatsPage() {
         <div className="flex flex-col sm:flex-row gap-4">
           <button
             onClick={loadStats}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-xl transition flex items-center justify-center gap-2"
+            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-xl transition flex items-center justify-center gap-2 shadow-lg"
           >
             <span>🔄</span>
             <span>Odśwież statystyki</span>
@@ -266,7 +266,7 @@ export default function MLStatsPage() {
           
           <button
             onClick={resetModel}
-            className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-8 rounded-xl transition flex items-center justify-center gap-2"
+            className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-8 rounded-xl transition flex items-center justify-center gap-2 shadow-lg"
           >
             <span>⚠️</span>
             <span>Reset modelu</span>
@@ -274,7 +274,7 @@ export default function MLStatsPage() {
         </div>
 
         {/* Info Panel */}
-        <div className="mt-8 p-6 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-700/50 rounded-xl">
+        <div className="mt-8 p-6 bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-700/50 rounded-xl shadow-xl">
           <h3 className="text-xl font-bold mb-3 flex items-center gap-2">
             <span>🤖</span>
             <span>Jak działa Machine Learning?</span>
