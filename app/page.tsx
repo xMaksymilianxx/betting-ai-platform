@@ -13,10 +13,8 @@ export default function Home() {
   const [filters, setFilters] = useState({
     country: '',
     league: '',
-    dateRange: 'today', // today, tomorrow, week
-    status: 'all', // all, live, prematch, finished
-    minConfidence: 0,
-    minValue: 0
+    dateRange: 'today',
+    status: 'all'
   });
   
   const [aiPredictions, setAIPredictions] = useState<any>({});
@@ -27,37 +25,53 @@ export default function Home() {
     setError('');
     
     try {
-      // Build query params
       const params = new URLSearchParams();
       
       // Date range
+      let dateFrom = '';
+      let dateTo = '';
+      
       if (filters.dateRange === 'today') {
-        params.set('date', new Date().toISOString().split('T')[0]);
+        dateFrom = new Date().toISOString().split('T')[0];
+        dateTo = dateFrom;
       } else if (filters.dateRange === 'tomorrow') {
-        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        params.set('date', tomorrow);
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        dateFrom = tomorrow.toISOString().split('T')[0];
+        dateTo = dateFrom;
       } else if (filters.dateRange === 'week') {
-        params.set('days', '7');
+        dateFrom = new Date().toISOString().split('T')[0];
+        const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        dateTo = nextWeek.toISOString().split('T')[0];
       }
       
+      params.set('dateFrom', dateFrom);
+      params.set('dateTo', dateTo);
+      
       // Status filter
-      if (filters.status !== 'all') {
-        params.set('status', filters.status);
+      if (filters.status === 'live') {
+        params.set('live', '1');
+      } else if (filters.status === 'prematch') {
+        params.set('status', 'NS');
+      } else if (filters.status === 'finished') {
+        params.set('status', 'FT');
       }
+      
+      console.log(`🔍 Fetching matches:`, Object.fromEntries(params));
       
       const response = await fetch(`/api/matches?${params}`);
       const data = await response.json();
       
       if (data.success) {
+        console.log(`✅ Received ${data.matches.length} matches`);
         setMatches(data.matches);
         setLastUpdate(new Date().toLocaleTimeString('pl-PL'));
         setApiCallsUsed(prev => prev + 1);
       } else {
         setError(data.error || 'Błąd pobierania danych');
       }
-    } catch (err) {
+    } catch (err: any) {
       setError('Błąd połączenia z serwerem');
-      console.error(err);
+      console.error('Fetch error:', err);
     } finally {
       setLoading(false);
     }
@@ -134,36 +148,29 @@ export default function Home() {
                   ⚽ AI Betting Platform Pro
                 </h1>
                 <p className="text-sm text-gray-400">
-                  Real-time + Prematch predictions • All markets
+                  Prematch + Live • All Markets • Deep Analysis
                 </p>
               </div>
             </div>
             
             <div className="flex items-center gap-3">
-              {/* API Calls Counter */}
               <div className="px-3 py-1.5 bg-gray-700/50 rounded-lg text-sm">
-                <span className="text-gray-400">API Calls:</span>
+                <span className="text-gray-400">API:</span>
                 <span className="ml-2 font-bold text-blue-400">{apiCallsUsed}</span>
                 <span className="text-gray-500 ml-1">/ 100</span>
               </div>
               
               {lastUpdate && (
                 <div className="text-xs text-gray-500">
-                  Last update: {lastUpdate}
+                  {lastUpdate}
                 </div>
               )}
               
-              <Link
-                href="/archive"
-                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-sm font-medium"
-              >
+              <Link href="/archive" className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-sm">
                 📚 Archiwum
               </Link>
               
-              <Link
-                href="/dashboard"
-                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-sm font-medium"
-              >
+              <Link href="/dashboard" className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-sm">
                 📊 Dashboard
               </Link>
               
@@ -172,7 +179,7 @@ export default function Home() {
                 disabled={loading}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-lg transition font-medium"
               >
-                {loading ? '🔄 Ładowanie...' : '🔄 Odśwież Mecze'}
+                {loading ? '🔄 Ładowanie...' : '🔄 Odśwież'}
               </button>
             </div>
           </div>
@@ -182,9 +189,9 @@ export default function Home() {
       <div className="container mx-auto px-4 py-6">
         {/* Filters */}
         <div className="bg-gray-800/30 backdrop-blur rounded-xl p-4 mb-6 border border-gray-700">
-          <h3 className="text-lg font-bold mb-3">🔍 Filtry i Opcje</h3>
+          <h3 className="text-lg font-bold mb-3">🔍 Filtry</h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <label className="block text-xs text-gray-400 mb-1">Kraj</label>
               <input
@@ -192,7 +199,7 @@ export default function Home() {
                 placeholder="np. England"
                 value={filters.country}
                 onChange={(e) => setFilters({...filters, country: e.target.value})}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-white"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm"
               />
             </div>
 
@@ -203,54 +210,47 @@ export default function Home() {
                 placeholder="np. Premier League"
                 value={filters.league}
                 onChange={(e) => setFilters({...filters, league: e.target.value})}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-white"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm"
               />
             </div>
 
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Zakres Dat</label>
+              <label className="block text-xs text-gray-400 mb-1">Data</label>
               <select
                 value={filters.dateRange}
                 onChange={(e) => setFilters({...filters, dateRange: e.target.value})}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-white"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm"
               >
                 <option value="today">📅 Dzisiaj</option>
                 <option value="tomorrow">📅 Jutro</option>
-                <option value="week">📅 Najbliższy Tydzień</option>
+                <option value="week">📅 Tydzień</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Status Meczu</label>
+              <label className="block text-xs text-gray-400 mb-1">Status</label>
               <select
                 value={filters.status}
                 onChange={(e) => setFilters({...filters, status: e.target.value})}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-white"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm"
               >
                 <option value="all">🌐 Wszystkie</option>
-                <option value="live">🔴 Na Żywo</option>
-                <option value="prematch">⏰ Przedmeczowe</option>
-                <option value="finished">✅ Zakończone</option>
+                <option value="live">🔴 Live</option>
+                <option value="prematch">⏰ Prematch</option>
+                <option value="finished">✅ Finished</option>
               </select>
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 mt-3">
             <button
-              onClick={() => setFilters({ 
-                country: '', 
-                league: '', 
-                dateRange: 'today',
-                status: 'all',
-                minConfidence: 0, 
-                minValue: 0 
-              })}
+              onClick={() => setFilters({ country: '', league: '', dateRange: 'today', status: 'all' })}
               className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 rounded text-sm"
             >
-              ❌ Wyczyść filtry
+              ❌ Reset
             </button>
             <div className="text-sm text-gray-400 flex items-center">
-              Znaleziono: <span className="font-bold ml-1 text-blue-400">{filteredMatches.length}</span> meczów
+              Znaleziono: <span className="font-bold ml-1 text-blue-400">{filteredMatches.length}</span>
             </div>
           </div>
         </div>
@@ -266,36 +266,29 @@ export default function Home() {
         {loading && (
           <div className="text-center py-12">
             <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-400">Pobieranie meczów...</p>
+            <p className="text-gray-400">Pobieranie...</p>
           </div>
         )}
 
-        {/* Empty State - First Load */}
+        {/* Empty */}
         {!loading && matches.length === 0 && !lastUpdate && (
           <div className="text-center py-12 text-gray-400">
             <div className="text-6xl mb-4">⚽</div>
-            <p className="text-lg mb-2">Kliknij "Odśwież Mecze" aby załadować dane</p>
-            <p className="text-sm">Ręczne odświeżanie oszczędza limity API</p>
+            <p className="text-lg">Kliknij "Odśwież" aby załadować mecze</p>
           </div>
         )}
 
-        {/* Empty State - No Matches */}
         {!loading && filteredMatches.length === 0 && lastUpdate && (
           <div className="text-center py-12 text-gray-400">
             <div className="text-6xl mb-4">📭</div>
-            <p className="text-lg">Brak meczów spełniających kryteria</p>
-            <p className="text-sm">Zmień filtry lub zakres dat</p>
+            <p className="text-lg">Brak meczów</p>
           </div>
         )}
 
-        {/* Matches Grid */}
+        {/* Matches */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {filteredMatches.map((match) => (
-            <div
-              key={match.id}
-              className="bg-gray-800/30 backdrop-blur rounded-xl p-6 border border-gray-700 hover:border-blue-500 transition"
-            >
-              {/* Status Badge */}
+            <div key={match.id} className="bg-gray-800/30 backdrop-blur rounded-xl p-6 border border-gray-700 hover:border-blue-500 transition">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-xs text-gray-400">
                   {match.country} • {match.league}
@@ -307,31 +300,22 @@ export default function Home() {
                     </span>
                   )}
                   <div className="text-xs font-bold text-blue-400">
-                    {new Date(match.time).toLocaleTimeString('pl-PL', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
+                    {new Date(match.time).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
               </div>
 
-              {/* Teams */}
               <div className="space-y-3 mb-4">
                 <div className="flex items-center justify-between">
                   <div className="text-lg font-bold">{match.home}</div>
-                  {match.score && (
-                    <div className="text-2xl font-bold text-blue-400">{match.score.home}</div>
-                  )}
+                  {match.score && <div className="text-2xl font-bold text-blue-400">{match.score.home}</div>}
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="text-lg font-bold">{match.away}</div>
-                  {match.score && (
-                    <div className="text-2xl font-bold text-blue-400">{match.score.away}</div>
-                  )}
+                  {match.score && <div className="text-2xl font-bold text-blue-400">{match.score.away}</div>}
                 </div>
               </div>
 
-              {/* Odds */}
               {match.odds && (
                 <div className="grid grid-cols-3 gap-2 mb-4">
                   <div className="bg-gray-700/50 rounded p-2 text-center">
@@ -349,60 +333,93 @@ export default function Home() {
                 </div>
               )}
 
-              {/* AI Predictions */}
+              {/* AI Predictions Display */}
               {aiPredictions[match.id] && aiPredictions[match.id].length > 0 && (
-                <div className="mt-4 p-3 bg-gradient-to-r from-purple-900/30 to-pink-900/30 rounded-lg border border-purple-500/30 max-h-96 overflow-y-auto">
-                  <div className="text-sm font-bold mb-2 flex items-center gap-2">
-                    🧠 AI Predictions ({aiPredictions[match.id].length} markets)
-                  </div>
-                  
-                  <div className="space-y-2">
-                    {aiPredictions[match.id].map((pred: any, idx: number) => (
-                      <div key={idx} className="bg-black/30 p-2 rounded">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-xs">{pred.market}</span>
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                              pred.confidence >= 70 ? 'bg-green-600' :
-                              pred.confidence >= 55 ? 'bg-yellow-600' : 'bg-gray-600'
-                            }`}>
-                              {pred.confidence}%
-                            </span>
-                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                              pred.risk === 'low' ? 'bg-green-700' :
-                              pred.risk === 'medium' ? 'bg-yellow-700' : 'bg-red-700'
-                            }`}>
-                              {pred.risk.toUpperCase()}
-                            </span>
-                          </div>
+                <div className="mt-4 space-y-3 max-h-96 overflow-y-auto">
+                  {aiPredictions[match.id].map((pred: any, idx: number) => (
+                    <div key={idx} className="p-4 bg-gradient-to-r from-purple-900/40 to-pink-900/40 rounded-lg border border-purple-500/50">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-lg">{pred.market}</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                            pred.risk === 'low' ? 'bg-green-600' :
+                            pred.risk === 'medium' ? 'bg-yellow-600' : 'bg-red-600'
+                          }`}>
+                            {pred.risk.toUpperCase()}
+                          </span>
                         </div>
-                        
-                        <div className="text-sm font-bold text-blue-400 mb-1">
-                          {pred.prediction} @ {pred.recommendedOdds} • Stake: {pred.stakeSize}u
-                        </div>
-                        
-                        {pred.expectedValue > 0 && (
-                          <div className="text-xs font-bold text-green-400 mb-1">
-                            💎 Value: +{pred.expectedValue}% • {pred.timing}
-                          </div>
-                        )}
-                        
-                        <div className="text-xs text-gray-400">
-                          {pred.reasoning[0]}
+                        <span className={`px-3 py-1 rounded-lg text-sm font-bold ${
+                          pred.confidence >= 70 ? 'bg-green-600' :
+                          pred.confidence >= 55 ? 'bg-yellow-600' : 'bg-gray-600'
+                        }`}>
+                          {pred.confidence}%
+                        </span>
+                      </div>
+
+                      <div className="mb-3 p-3 bg-black/30 rounded-lg">
+                        <div className="text-sm text-gray-400 mb-1">💡 Typ:</div>
+                        <div className="text-xl font-bold text-blue-400">{pred.prediction}</div>
+                        <div className="text-sm text-gray-400 mt-1">
+                          @ {pred.recommendedOdds} • Stawka: {pred.stakeSize}u
                         </div>
                       </div>
-                    ))}
-                  </div>
+
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        <div className="p-2 bg-black/20 rounded">
+                          <div className="text-xs text-gray-400">Implied Prob</div>
+                          <div className="text-sm font-bold">{pred.features?.impliedProbability || 'N/A'}%</div>
+                        </div>
+                        <div className="p-2 bg-black/20 rounded">
+                          <div className="text-xs text-gray-400">Real Prob</div>
+                          <div className="text-sm font-bold text-green-400">{pred.features?.realProbability || pred.confidence}%</div>
+                        </div>
+                        <div className="p-2 bg-black/20 rounded">
+                          <div className="text-xs text-gray-400">Expected Value</div>
+                          <div className={`text-sm font-bold ${pred.expectedValue > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {pred.expectedValue > 0 ? '+' : ''}{pred.expectedValue}%
+                          </div>
+                        </div>
+                        <div className="p-2 bg-black/20 rounded">
+                          <div className="text-xs text-gray-400">Value</div>
+                          <div className={`text-sm font-bold ${pred.valuePercentage > 0 ? 'text-green-400' : 'text-gray-400'}`}>
+                            {pred.valuePercentage > 0 ? '+' : ''}{pred.valuePercentage}%
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="text-xs font-bold text-gray-300 mb-1">📋 Analiza:</div>
+                        {pred.reasoning.map((reason: string, i: number) => (
+                          <div key={i} className="text-xs text-gray-400 bg-black/20 p-2 rounded">
+                            {reason}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                          pred.timing === 'live' ? 'bg-red-600 animate-pulse' : 'bg-blue-600'
+                        }`}>
+                          {pred.timing === 'live' ? '🔴 LIVE' : '⏰ PREMATCH'}
+                        </span>
+                        
+                        {pred.expectedValue > 5 && (
+                          <span className="px-2 py-1 rounded text-xs font-bold bg-gradient-to-r from-yellow-600 to-orange-600 animate-pulse">
+                            💎 VALUE BET
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              {/* AI Button */}
               <button
                 onClick={() => generateAIPredictions(match)}
                 disabled={loadingAI === match.id}
                 className="w-full mt-3 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 rounded-lg transition font-medium"
               >
-                {loadingAI === match.id ? '🔄 Analizuję wszystkie rynki...' : '🧠 Generuj Predykcje AI (Wszystkie Rynki)'}
+                {loadingAI === match.id ? '🔄 Analizuję...' : '🧠 Generuj Predykcje AI'}
               </button>
             </div>
           ))}
