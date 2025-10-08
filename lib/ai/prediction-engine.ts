@@ -1,576 +1,317 @@
-// ADVANCED AI ENGINE - Uses ALL available data for maximum accuracy
+import { matchArchiver } from '../db/match-archiver';
+import { supabase } from '../db/supabase';
 
-import { mlLearningEngine } from './ml-learning-engine';
-
-interface MatchData {
-  home: string;
-  away: string;
+interface PredictionInput {
+  homeTeam: string;
+  awayTeam: string;
   league: string;
-  homeScore?: number;
-  awayScore?: number;
-  minute?: number;
-  statistics?: any;
-  odds?: any;
-  form?: any;
+  currentOdds: {
+    home: number;
+    draw: number;
+    away: number;
+    over25?: number;
+    bttsYes?: number;
+  };
+  liveStats?: any;
 }
 
 interface Prediction {
-  confidence: number;
-  betType: string;
+  type: string;
   prediction: string;
-  odds: number;
-  roi: number;
-  accuracy: number;
-  valuePercentage: number;
-  reasoning: string;
+  confidence: number;
+  recommendedOdds: number;
+  expectedValue: number;
+  reasoning: string[];
+  features: any;
 }
 
-export class PredictionEngine {
-  
-  calculatePrediction(match: MatchData): Prediction {
+class PredictionEngine {
+  private modelVersion = 'v1.0.0';
+
+  async generatePredictions(input: PredictionInput): Promise<Prediction[]> {
+    console.log(`🧠 [AI] Generating predictions for ${input.homeTeam} vs ${input.awayTeam}`);
+
+    const h2h = await matchArchiver.getH2H(input.homeTeam, input.awayTeam, 10);
+    const homeForm = await matchArchiver.getTeamForm(input.homeTeam, 5);
+    const awayForm = await matchArchiver.getTeamForm(input.awayTeam, 5);
+    const homeStats = await matchArchiver.getTeamStats(input.homeTeam, input.league);
+    const awayStats = await matchArchiver.getTeamStats(input.awayTeam, input.league);
+
+    const features = this.extractFeatures({
+      h2h,
+      homeForm,
+      awayForm,
+      homeStats,
+      awayStats,
+      currentOdds: input.currentOdds,
+      liveStats: input.liveStats
+    });
+
     const predictions: Prediction[] = [];
-    const params = mlLearningEngine.getParameters();
 
-    if (match.homeScore !== undefined && match.awayScore !== undefined && match.minute !== undefined) {
-      const totalGoals = match.homeScore + match.awayScore;
-      const minute = match.minute;
-      const scoreDiff = match.homeScore - match.awayScore;
-
-      if (minute >= params.minimumMinuteForPrediction) {
-        // Generate ALL predictions using FULL data
-        predictions.push(this.predict1X2Advanced(match, scoreDiff, params));
-        predictions.push(this.predictOverUnderAdvanced(match, totalGoals, params));
-        predictions.push(this.predictBTTSAdvanced(match, params));
-
-        if (match.statistics?.corners) {
-          predictions.push(this.predictCornersAdvanced(match, params));
-        }
-        
-        if (match.statistics?.cards) {
-          predictions.push(this.predictCardsAdvanced(match, params));
-        }
-      }
+    // 1X2 Prediction
+    const result1X2 = this.predict1X2(features);
+    if (result1X2.confidence >= 50) {
+      predictions.push(result1X2);
     }
 
-    // Return best prediction
-    const bestPrediction = predictions
-      .filter(p => p.confidence >= 60)
-      .sort((a, b) => {
-        const scoreA = a.confidence * 0.65 + a.valuePercentage * 0.35;
-        const scoreB = b.confidence * 0.65 + b.valuePercentage * 0.35;
-        return scoreB - scoreA;
-      })[0];
+    // Over/Under 2.5
+    const resultOU = this.predictOver25(features);
+    if (resultOU.confidence >= 50) {
+      predictions.push(resultOU);
+    }
 
-    return bestPrediction || this.getDefaultPrediction();
+    // BTTS
+    const resultBTTS = this.predictBTTS(features);
+    if (resultBTTS.confidence >= 50) {
+      predictions.push(resultBTTS);
+    }
+
+    console.log(`✅ [AI] Generated ${predictions.length} predictions`);
+    return predictions;
   }
 
-  // ADVANCED 1X2 PREDICTION - Uses: score, time, statistics, form, odds
-  private predict1X2Advanced(match: MatchData, scoreDiff: number, params: any): Prediction {
-    const { homeScore = 0, awayScore = 0, minute = 0, statistics, odds, form } = match;
-    
-    let confidence = 50;
-    let prediction = 'X (Draw)';
-    let reasoning = '';
-    let realOdds = 2.50;
-    
-    const timeRemaining = 90 - minute;
+  private extractFeatures(data: any): any {
+    const { h2h, homeForm, awayForm, homeStats, awayStats, currentOdds, liveStats } = data;
 
-    // BASE CALCULATION (Score + Time)
-    if (minute >= 75) {
-      if (scoreDiff >= 2) {
-        confidence = 94 + (minute - 75) * 0.4;
-        prediction = '1 (Home Win)';
-        reasoning = `${homeScore}-${awayScore} at ${minute}', 2+ goal lead`;
-      } else if (scoreDiff <= -2) {
-        confidence = 94 + (minute - 75) * 0.4;
-        prediction = '2 (Away Win)';
-        reasoning = `${homeScore}-${awayScore} at ${minute}', 2+ goal lead`;
-      } else if (scoreDiff === 1) {
-        confidence = 80 + (minute - 75);
-        prediction = '1 (Home Win)';
-        reasoning = `${homeScore}-${awayScore} at ${minute}', narrow lead`;
-      } else if (scoreDiff === -1) {
-        confidence = 80 + (minute - 75);
-        prediction = '2 (Away Win)';
-        reasoning = `${homeScore}-${awayScore} at ${minute}', narrow lead`;
-      } else if (minute >= 85) {
-        confidence = 84 + (minute - 85);
-        prediction = 'X (Draw)';
-        reasoning = `${homeScore}-${awayScore} at ${minute}', draw very likely`;
-      }
-    } else if (minute >= 60) {
-      if (Math.abs(scoreDiff) >= 2) {
-        confidence = 88 + Math.abs(scoreDiff) * 2;
-        prediction = scoreDiff > 0 ? '1 (Home Win)' : '2 (Away Win)';
-        reasoning = `${homeScore}-${awayScore} at ${minute}', comfortable lead`;
-      } else if (Math.abs(scoreDiff) === 1) {
-        confidence = 70 + (minute - 60) * 0.6;
-        prediction = scoreDiff > 0 ? '1 (Home Win)' : '2 (Away Win)';
-        reasoning = `${homeScore}-${awayScore} at ${minute}', slight edge`;
-      }
-    } else if (minute >= 30) {
-      if (Math.abs(scoreDiff) >= 2) {
-        confidence = 74 + Math.abs(scoreDiff) * 3;
-        prediction = scoreDiff > 0 ? '1 (Home Win)' : '2 (Away Win)';
-        reasoning = `${homeScore}-${awayScore} at ${minute}', strong position`;
-      }
-    }
+    // H2H Analysis
+    const h2hHomeWins = h2h.filter((m: any) => 
+      (m.home_team === homeStats?.team_name && m.final_result === '1') ||
+      (m.away_team === homeStats?.team_name && m.final_result === '2')
+    ).length;
+    const h2hDraws = h2h.filter((m: any) => m.final_result === 'X').length;
+    const h2hAwayWins = h2h.filter((m: any) => 
+      (m.home_team === awayStats?.team_name && m.final_result === '1') ||
+      (m.away_team === awayStats?.team_name && m.final_result === '2')
+    ).length;
 
-    // BOOST WITH STATISTICS (possession, shots, attacks)
-    if (statistics && confidence > 50) {
-      let statBoost = 0;
-      
-      // Possession advantage
-      if (statistics.homePossession && statistics.awayPossession) {
-        const possessionDiff = statistics.homePossession - statistics.awayPossession;
-        if (prediction.includes('Home') && possessionDiff > 10) {
-          statBoost += 3;
-          reasoning += ` + ${possessionDiff}% possession`;
-        } else if (prediction.includes('Away') && possessionDiff < -10) {
-          statBoost += 3;
-          reasoning += ` + ${Math.abs(possessionDiff)}% possession`;
-        }
-      }
+    const h2hAvgGoals = h2h.reduce((sum: number, m: any) => sum + m.total_goals, 0) / (h2h.length || 1);
+    const h2hBttsPercent = (h2h.filter((m: any) => m.btts).length / (h2h.length || 1)) * 100;
 
-      // Shots on target advantage
-      if (statistics.homeShotsOnTarget && statistics.awayShotsOnTarget) {
-        const shotsDiff = statistics.homeShotsOnTarget - statistics.awayShotsOnTarget;
-        if (prediction.includes('Home') && shotsDiff > 3) {
-          statBoost += 2;
-          reasoning += ` + ${shotsDiff} more shots on target`;
-        } else if (prediction.includes('Away') && shotsDiff < -3) {
-          statBoost += 2;
-          reasoning += ` + ${Math.abs(shotsDiff)} more shots on target`;
-        }
-      }
-
-      // Dangerous attacks
-      if (statistics.homeDangerousAttacks && statistics.awayDangerousAttacks) {
-        const attacksDiff = statistics.homeDangerousAttacks - statistics.awayDangerousAttacks;
-        if (prediction.includes('Home') && attacksDiff > 10) {
-          statBoost += 2;
-          reasoning += ` + ${attacksDiff} more dangerous attacks`;
-        } else if (prediction.includes('Away') && attacksDiff < -10) {
-          statBoost += 2;
-          reasoning += ` + ${Math.abs(attacksDiff)} more dangerous attacks`;
-        }
-      }
-
-      confidence = Math.min(confidence + statBoost, 97);
-    }
-
-    // BOOST WITH FORM
-    if (form?.homeForm && form?.awayForm) {
-      const homeRecentWins = form.homeForm.filter((r: string) => r === 'W').length;
-      const awayRecentWins = form.awayForm.filter((r: string) => r === 'W').length;
-      
-      if (prediction.includes('Home') && homeRecentWins >= 4) {
-        confidence += 2;
-        reasoning += ` + hot form (${homeRecentWins}/5 wins)`;
-      } else if (prediction.includes('Away') && awayRecentWins >= 4) {
-        confidence += 2;
-        reasoning += ` + hot form (${awayRecentWins}/5 wins)`;
-      }
-    }
-
-    // H2H History
-    if (form?.h2h) {
-      const { homeWins, awayWins, draws } = form.h2h;
-      if (prediction.includes('Home') && homeWins > awayWins + 2) {
-        confidence += 1;
-        reasoning += ` + H2H dominance`;
-      } else if (prediction.includes('Away') && awayWins > homeWins + 2) {
-        confidence += 1;
-        reasoning += ` + H2H dominance`;
-      }
-    }
-
-    // VALUE BETTING with REAL ODDS
-    let valueBonus = 0;
-    if (odds) {
-      if (prediction.includes('Home')) realOdds = odds.home || realOdds;
-      else if (prediction.includes('Away')) realOdds = odds.away || realOdds;
-      else realOdds = odds.draw || realOdds;
-
-      const impliedProb = 1 / realOdds;
-      const ourProb = confidence / 100;
-      
-      if (ourProb > impliedProb * 1.15) {
-        valueBonus = 12;
-        reasoning += ' 💎 VALUE';
-      } else if (ourProb > impliedProb * 1.10) {
-        valueBonus = 6;
-        reasoning += ' 💎 value';
-      }
-    }
-
-    confidence = Math.min(Math.round(confidence + valueBonus), 97);
+    // Form Analysis
+    const homeFormScore = this.calculateFormScore(homeForm);
+    const awayFormScore = this.calculateFormScore(awayForm);
 
     return {
-      confidence,
-      betType: '1X2',
-      prediction,
-      odds: realOdds,
-      roi: this.calculateROI(confidence, realOdds),
-      accuracy: this.calculateAccuracy(confidence),
-      valuePercentage: Math.max(0, Math.floor((confidence - 55) * 1.4)),
-      reasoning
+      h2h: {
+        totalMatches: h2h.length,
+        homeWins: h2hHomeWins,
+        draws: h2hDraws,
+        awayWins: h2hAwayWins,
+        avgGoals: h2hAvgGoals,
+        bttsPercent: h2hBttsPercent
+      },
+      form: {
+        home: homeFormScore,
+        away: awayFormScore,
+        diff: homeFormScore - awayFormScore
+      },
+      stats: {
+        home: homeStats,
+        away: awayStats
+      },
+      odds: currentOdds,
+      live: liveStats
     };
   }
 
-  // ADVANCED OVER/UNDER - Uses: goals, time, statistics, form
-  private predictOverUnderAdvanced(match: MatchData, totalGoals: number, params: any): Prediction {
-    const { minute = 0, statistics, odds, form } = match;
-    const goalsPerMinute = totalGoals / minute;
-    const projected = goalsPerMinute * 90;
+  private calculateFormScore(form: string[]): number {
+    if (!form || form.length === 0) return 50;
     
-    let confidence = 50;
-    let prediction = 'Under 2.5';
-    let reasoning = '';
-    let realOdds = odds?.over25 || odds?.under25 || 1.90;
-
-    // BASE CALCULATION
-    if (totalGoals >= 3) {
-      confidence = 99;
-      prediction = 'Over 2.5';
-      reasoning = `${totalGoals} goals - Over confirmed`;
-      realOdds = odds?.over25 || 1.01;
-    } else if (totalGoals === 2) {
-      if (minute >= 80) {
-        confidence = 92 + (minute - 80);
-        prediction = 'Under 2.5';
-        reasoning = `2 goals at ${minute}', very late`;
-        realOdds = odds?.under25 || 1.25;
-      } else if (minute >= 60) {
-        confidence = 82 + (minute - 60) * 0.5;
-        prediction = 'Under 2.5';
-        reasoning = `2 goals at ${minute}', time running out`;
-        realOdds = odds?.under25 || 1.50;
-      } else if (minute <= 40) {
-        confidence = 76 - (minute / 40) * 8;
-        prediction = 'Over 2.5';
-        reasoning = `2 goals early (${minute}'), high pace`;
-        realOdds = odds?.over25 || 1.55;
-      }
-    } else if (totalGoals === 1) {
-      if (minute >= 75) {
-        confidence = 90 + (minute - 75) * 0.6;
-        prediction = 'Under 2.5';
-        reasoning = `Only 1 goal at ${minute}'`;
-        realOdds = odds?.under25 || 1.20;
-      } else if (minute >= 50) {
-        confidence = 78;
-        prediction = 'Under 2.5';
-        reasoning = `1 goal at ${minute}', need 2 more`;
-        realOdds = odds?.under25 || 1.55;
-      } else if (projected >= 3.5) {
-        confidence = 68;
-        prediction = 'Over 2.5';
-        reasoning = `1 goal early, projected ${projected.toFixed(1)}`;
-        realOdds = odds?.over25 || 2.00;
-      }
-    } else {
-      // 0 goals
-      if (minute >= 75) {
-        confidence = 95 + (minute - 75) * 0.4;
-        prediction = 'Under 2.5';
-        reasoning = `0 goals at ${minute}', need 3`;
-        realOdds = odds?.under25 || 1.12;
-      } else if (minute >= 50) {
-        confidence = 84;
-        prediction = 'Under 2.5';
-        reasoning = `0 goals at ${minute}', defensive`;
-        realOdds = odds?.under25 || 1.40;
-      }
-    }
-
-    // BOOST WITH STATISTICS
-    if (statistics && confidence > 50) {
-      let statBoost = 0;
-
-      // Total shots indicator
-      if (statistics.shots) {
-        if (prediction === 'Over 2.5' && statistics.shots > 20) {
-          statBoost += 3;
-          reasoning += ` + ${statistics.shots} shots`;
-        } else if (prediction === 'Under 2.5' && statistics.shots < 10) {
-          statBoost += 3;
-          reasoning += ` + only ${statistics.shots} shots`;
-        }
-      }
-
-      // Dangerous attacks
-      if (statistics.dangerousAttacks) {
-        if (prediction === 'Over 2.5' && statistics.dangerousAttacks > 40) {
-          statBoost += 2;
-          reasoning += ` + ${statistics.dangerousAttacks} attacks`;
-        } else if (prediction === 'Under 2.5' && statistics.dangerousAttacks < 20) {
-          statBoost += 2;
-          reasoning += ` + low threat (${statistics.dangerousAttacks})`;
-        }
-      }
-
-      confidence = Math.min(confidence + statBoost, 98);
-    }
-
-    // FORM ANALYSIS
-    if (form?.homeGoalsScored && form?.awayGoalsScored) {
-      const avgGoals = (form.homeGoalsScored + form.awayGoalsScored) / 10;
-      if (prediction === 'Over 2.5' && avgGoals > 3.0) {
-        confidence += 2;
-        reasoning += ` + high-scoring teams`;
-      }
-    }
-
-    // VALUE DETECTION
-    let valueBonus = 0;
-    if (odds && confidence > 70) {
-      const impliedProb = 1 / realOdds;
-      const ourProb = confidence / 100;
-      if (ourProb > impliedProb * 1.12) {
-        valueBonus = 10;
-        reasoning += ' 💎';
-      }
-    }
-
-    confidence = Math.min(Math.round(confidence + valueBonus), 98);
-
-    return {
-      confidence,
-      betType: 'Over/Under 2.5',
-      prediction,
-      odds: realOdds,
-      roi: this.calculateROI(confidence, realOdds),
-      accuracy: this.calculateAccuracy(confidence),
-      valuePercentage: Math.max(0, Math.floor((confidence - 55) * 1.5)),
-      reasoning: `🎯 ${reasoning}`
-    };
-  }
-
-  // ADVANCED BTTS
-  private predictBTTSAdvanced(match: MatchData, params: any): Prediction {
-    const { homeScore = 0, awayScore = 0, minute = 0, statistics, odds } = match;
-    const bothScored = homeScore > 0 && awayScore > 0;
+    let score = 0;
+    form.forEach((result, index) => {
+      const weight = form.length - index;
+      if (result === 'W') score += 3 * weight;
+      else if (result === 'D') score += 1 * weight;
+    });
     
-    let confidence = 50;
-    let prediction = 'No';
-    let reasoning = '';
-    let realOdds = 2.00;
-
-    if (bothScored) {
-      confidence = 99;
-      prediction = 'Yes';
-      reasoning = 'Both scored - confirmed';
-      realOdds = odds?.bttsYes || 1.01;
-    } else {
-      if (minute >= 85) {
-        confidence = 93 + (minute - 85);
-        prediction = 'No';
-        reasoning = homeScore === 0 ? `Home scoreless at ${minute}'` : `Away scoreless at ${minute}'`;
-        realOdds = odds?.bttsNo || 1.15;
-      } else if (minute >= 70) {
-        confidence = 82 + (minute - 70);
-        prediction = 'No';
-        reasoning = `One team scoreless at ${minute}'`;
-        realOdds = odds?.bttsNo || 1.40;
-      } else if (minute >= 50) {
-        confidence = 72;
-        prediction = 'No';
-        reasoning = `Still scoreless at ${minute}'`;
-        realOdds = odds?.bttsNo || 1.65;
-      }
-
-      // STATISTICS BOOST
-      if (statistics) {
-        if (homeScore === 0 && statistics.homeShotsOnTarget && statistics.homeShotsOnTarget < 2) {
-          confidence += 4;
-          reasoning += ` + only ${statistics.homeShotsOnTarget} home shots`;
-        }
-        if (awayScore === 0 && statistics.awayShotsOnTarget && statistics.awayShotsOnTarget < 2) {
-          confidence += 4;
-          reasoning += ` + only ${statistics.awayShotsOnTarget} away shots`;
-        }
-      }
-    }
-
-    return {
-      confidence: Math.min(confidence, 96),
-      betType: 'BTTS',
-      prediction: `BTTS ${prediction}`,
-      odds: realOdds,
-      roi: this.calculateROI(confidence, realOdds),
-      accuracy: this.calculateAccuracy(confidence),
-      valuePercentage: Math.max(0, Math.floor((confidence - 55) * 1.2)),
-      reasoning
-    };
+    const maxScore = form.reduce((sum, _, i) => sum + (3 * (form.length - i)), 0);
+    return (score / maxScore) * 100;
   }
 
-  // ADVANCED CORNERS
-  private predictCornersAdvanced(match: MatchData, params: any): Prediction {
-    const { minute = 0, statistics } = match;
-    const corners = statistics?.corners || 0;
-    const cornersPerMinute = corners / minute;
-    const projected = cornersPerMinute * 90;
+  private predict1X2(features: any): Prediction {
+    const { h2h, form, odds, live } = features;
     
-    let confidence = 50;
-    let prediction = 'Under 9.5';
-    let reasoning = '';
+    let homeProb = 33.33;
+    let drawProb = 33.33;
+    let awayProb = 33.33;
 
-    if (projected >= 12) {
-      confidence = 86 + Math.min(12, (projected - 12) * 1.5);
-      prediction = 'Over 9.5';
-      reasoning = `${corners} at ${minute}', projected ${projected.toFixed(1)}`;
-    } else if (projected <= 7) {
-      confidence = 80 + Math.min(12, (7 - projected) * 2);
-      prediction = 'Under 9.5';
-      reasoning = `${corners} at ${minute}', low pace`;
-    } else if (projected >= 10) {
-      confidence = 72;
-      prediction = 'Over 9.5';
-      reasoning = `${corners} at ${minute}', good pace`;
+    // H2H influence
+    if (h2h.totalMatches >= 3) {
+      homeProb += (h2h.homeWins / h2h.totalMatches) * 20;
+      drawProb += (h2h.draws / h2h.totalMatches) * 20;
+      awayProb += (h2h.awayWins / h2h.totalMatches) * 20;
     }
 
-    // Attack statistics boost
-    if (statistics?.dangerousAttacks && statistics.dangerousAttacks > 50) {
-      if (prediction === 'Over 9.5') {
-        confidence += 3;
-        reasoning += ` + high pressure`;
-      }
+    // Form influence
+    homeProb += (form.diff * 0.2);
+    awayProb -= (form.diff * 0.2);
+
+    // Live stats influence
+    if (live?.possession) {
+      homeProb += (live.possession.home - 50) * 0.3;
+      awayProb += (live.possession.away - 50) * 0.3;
     }
 
-    return {
-      confidence: Math.min(confidence, 92),
-      betType: 'Corners Over/Under 9.5',
-      prediction,
-      odds: this.calculateOdds(confidence),
-      roi: this.calculateROI(confidence),
-      accuracy: this.calculateAccuracy(confidence),
-      valuePercentage: Math.max(0, Math.floor((confidence - 55) * 1.0)),
-      reasoning
-    };
-  }
+    // Normalize
+    const total = homeProb + drawProb + awayProb;
+    homeProb = (homeProb / total) * 100;
+    drawProb = (drawProb / total) * 100;
+    awayProb = (awayProb / total) * 100;
 
-  // ADVANCED CARDS
-  private predictCardsAdvanced(match: MatchData, params: any): Prediction {
-    const { minute = 0, statistics } = match;
-    const cards = statistics?.cards || 0;
-    const cardsPerMinute = cards / minute;
-    const projected = cardsPerMinute * 90;
-    
-    let confidence = 50;
-    let prediction = 'Under 4.5';
-    let reasoning = '';
+    // Determine prediction
+    let prediction = '1';
+    let confidence = homeProb;
+    let recommendedOdds = odds.home;
 
-    if (projected >= 6) {
-      confidence = 84 + Math.min(10, (projected - 6) * 2);
-      prediction = 'Over 4.5';
-      reasoning = `${cards} cards at ${minute}', heated`;
-    } else if (projected <= 3) {
-      confidence = 78 + Math.min(10, (3 - projected) * 2);
-      prediction = 'Under 4.5';
-      reasoning = `${cards} cards at ${minute}', calm`;
-    } else if (projected >= 5) {
-      confidence = 68;
-      prediction = 'Over 4.5';
-      reasoning = `${cards} cards at ${minute}'`;
+    if (drawProb > homeProb && drawProb > awayProb) {
+      prediction = 'X';
+      confidence = drawProb;
+      recommendedOdds = odds.draw;
+    } else if (awayProb > homeProb) {
+      prediction = '2';
+      confidence = awayProb;
+      recommendedOdds = odds.away;
     }
 
-    // Fouls indicator
-    if (statistics?.fouls && statistics.fouls > 20) {
-      if (prediction === 'Over 4.5') {
-        confidence += 4;
-        reasoning += ` + ${statistics.fouls} fouls`;
-      }
-    }
+    const expectedValue = ((confidence / 100) * recommendedOdds - 1) * 100;
 
-    return {
-      confidence: Math.min(confidence, 90),
-      betType: 'Cards Over/Under 4.5',
-      prediction,
-      odds: this.calculateOdds(confidence),
-      roi: this.calculateROI(confidence),
-      accuracy: this.calculateAccuracy(confidence),
-      valuePercentage: Math.max(0, Math.floor((confidence - 55) * 0.9)),
-      reasoning
-    };
-  }
-
-  private calculateOdds(confidence: number): number {
-    if (confidence >= 95) return 1.02;
-    if (confidence >= 90) return 1.08;
-    if (confidence >= 85) return 1.20;
-    if (confidence >= 80) return 1.35;
-    if (confidence >= 75) return 1.50;
-    if (confidence >= 70) return 1.70;
-    if (confidence >= 65) return 1.95;
-    return 2.30;
-  }
-
-  private calculateROI(confidence: number, realOdds?: number): number {
-    if (realOdds) {
-      const expectedValue = (confidence / 100) * realOdds - 1;
-      return Math.round(expectedValue * 100);
-    }
-    const baseROI = (confidence - 50) * 2.2;
-    return Math.round(Math.max(-30, Math.min(95, baseROI)));
-  }
-
-  private calculateAccuracy(confidence: number): number {
-    const baseAccuracy = confidence * 0.90;
-    return Math.round(Math.max(62, Math.min(93, baseAccuracy)));
-  }
-
-  calculatePreMatchPrediction(match: MatchData): Prediction {
-    const topLeagues = [
-      'Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
-      'Champions League', 'Europa League'
+    const reasoning = [
+      `H2H: ${h2h.homeWins}-${h2h.draws}-${h2h.awayWins} (${h2h.totalMatches} mecze)`,
+      `Forma: Home ${form.home.toFixed(0)}% | Away ${form.away.toFixed(0)}%`,
+      `Prawdopodobieństwo: ${confidence.toFixed(1)}%`,
+      `Expected Value: ${expectedValue > 0 ? '+' : ''}${expectedValue.toFixed(1)}%`
     ];
 
-    const isTopLeague = topLeagues.some(tl => match.league.includes(tl));
-    const baseConfidence = isTopLeague ? 60 : 54;
-    const confidence = Math.round(baseConfidence + Math.random() * 5);
-
-    const betTypes = ['Over/Under 2.5', 'BTTS', '1X2'];
-    const betType = betTypes[Math.floor(Math.random() * betTypes.length)];
-    
-    let prediction = '';
-    let realOdds = 2.00;
-
-    if (betType === 'Over/Under 2.5') {
-      prediction = Math.random() > 0.5 ? 'Over 2.5' : 'Under 2.5';
-      realOdds = match.odds?.over25 || match.odds?.under25 || 1.90;
-    } else if (betType === 'BTTS') {
-      prediction = Math.random() > 0.5 ? 'BTTS Yes' : 'BTTS No';
-      realOdds = match.odds?.bttsYes || match.odds?.bttsNo || 1.95;
-    } else {
-      const outcomes = ['1 (Home Win)', 'X (Draw)', '2 (Away Win)'];
-      prediction = outcomes[Math.floor(Math.random() * outcomes.length)];
-      realOdds = match.odds?.home || match.odds?.draw || match.odds?.away || 2.50;
-    }
-
     return {
-      confidence: Math.min(confidence, 70),
-      betType,
+      type: '1X2',
       prediction,
-      odds: realOdds,
-      roi: this.calculateROI(confidence, realOdds),
-      accuracy: this.calculateAccuracy(confidence),
-      valuePercentage: Math.max(0, Math.floor((confidence - 50) * 0.6)),
-      reasoning: `Pre-match: ${isTopLeague ? 'Top league' : 'Lower league'}`
+      confidence: Math.round(confidence),
+      recommendedOdds,
+      expectedValue: Math.round(expectedValue * 10) / 10,
+      reasoning,
+      features
     };
   }
 
-  private getDefaultPrediction(): Prediction {
+  private predictOver25(features: any): Prediction {
+    const { h2h, stats, odds, live } = features;
+    
+    let overProb = 50;
+
+    // H2H goals
+    if (h2h.avgGoals >= 3) overProb += 20;
+    else if (h2h.avgGoals <= 2) overProb -= 20;
+
+    // Team stats
+    if (stats.home?.over25_percentage) {
+      overProb += (stats.home.over25_percentage - 50) * 0.3;
+    }
+    if (stats.away?.over25_percentage) {
+      overProb += (stats.away.over25_percentage - 50) * 0.3;
+    }
+
+    // Live stats
+    if (live?.shots) {
+      const totalShots = (live.shots.home || 0) + (live.shots.away || 0);
+      if (totalShots > 15) overProb += 15;
+    }
+
+    overProb = Math.max(0, Math.min(100, overProb));
+
+    const prediction = overProb >= 50 ? 'Over 2.5' : 'Under 2.5';
+    const confidence = overProb >= 50 ? overProb : (100 - overProb);
+    const recommendedOdds = odds.over25 || 2.0;
+    const expectedValue = ((confidence / 100) * recommendedOdds - 1) * 100;
+
+    const reasoning = [
+      `H2H średnia goli: ${h2h.avgGoals.toFixed(1)}`,
+      `Home Over%: ${stats.home?.over25_percentage || 'N/A'}%`,
+      `Away Over%: ${stats.away?.over25_percentage || 'N/A'}%`,
+      `Confidence: ${confidence.toFixed(1)}%`
+    ];
+
     return {
-      confidence: 50,
-      betType: 'Over/Under 2.5',
-      prediction: 'Under 2.5',
-      odds: 2.50,
-      roi: 0,
-      accuracy: 50,
-      valuePercentage: 0,
-      reasoning: 'Insufficient data'
+      type: 'Over/Under 2.5',
+      prediction,
+      confidence: Math.round(confidence),
+      recommendedOdds,
+      expectedValue: Math.round(expectedValue * 10) / 10,
+      reasoning,
+      features
     };
+  }
+
+  private predictBTTS(features: any): Prediction {
+    const { h2h, stats, odds } = features;
+    
+    let bttsProb = 50;
+
+    // H2H BTTS
+    bttsProb += (h2h.bttsPercent - 50) * 0.5;
+
+    // Team stats
+    if (stats.home?.btts_percentage) {
+      bttsProb += (stats.home.btts_percentage - 50) * 0.3;
+    }
+    if (stats.away?.btts_percentage) {
+      bttsProb += (stats.away.btts_percentage - 50) * 0.3;
+    }
+
+    bttsProb = Math.max(0, Math.min(100, bttsProb));
+
+    const prediction = bttsProb >= 50 ? 'Yes' : 'No';
+    const confidence = bttsProb >= 50 ? bttsProb : (100 - bttsProb);
+    const recommendedOdds = odds.bttsYes || 1.8;
+    const expectedValue = ((confidence / 100) * recommendedOdds - 1) * 100;
+
+    const reasoning = [
+      `H2H BTTS: ${h2h.bttsPercent.toFixed(0)}%`,
+      `Home BTTS%: ${stats.home?.btts_percentage || 'N/A'}%`,
+      `Away BTTS%: ${stats.away?.btts_percentage || 'N/A'}%`,
+      `Confidence: ${confidence.toFixed(1)}%`
+    ];
+
+    return {
+      type: 'BTTS',
+      prediction,
+      confidence: Math.round(confidence),
+      recommendedOdds,
+      expectedValue: Math.round(expectedValue * 10) / 10,
+      reasoning,
+      features
+    };
+  }
+
+  async savePrediction(matchId: string, prediction: Prediction): Promise<void> {
+    try {
+      await supabase.from('prediction_history').insert([{
+        match_id: matchId,
+        prediction_type: prediction.type,
+        prediction: prediction.prediction,
+        confidence: prediction.confidence,
+        recommended_odds: prediction.recommendedOdds,
+        stake_suggested: this.calculateStake(prediction.confidence, prediction.expectedValue),
+        predicted_at: new Date().toISOString(),
+        match_date: new Date().toISOString(),
+        model_version: this.modelVersion,
+        features_used: prediction.features
+      }]);
+
+      console.log(`✅ [AI] Prediction saved for match ${matchId}`);
+    } catch (error) {
+      console.error('❌ [AI] Error saving prediction:', error);
+    }
+  }
+
+  private calculateStake(confidence: number, expectedValue: number): number {
+    // Kelly Criterion inspired
+    if (expectedValue <= 0) return 0;
+    
+    const kelly = (confidence / 100 - 0.5) * 2;
+    const stake = Math.max(0, Math.min(10, kelly * 10));
+    
+    return Math.round(stake * 10) / 10;
   }
 }
 
