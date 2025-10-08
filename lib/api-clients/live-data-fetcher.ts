@@ -16,46 +16,108 @@ interface Match {
 }
 
 class LiveDataFetcher {
-  // TWOJE KLUCZE API (już wpisane!)
-  private readonly RAPIDAPI_KEY = 'c4e98069a3msh43378e5e19d1f3fp123456jsn1234567890ab';
-  private readonly FOOTBALL_DATA_KEY = '901f0e15a0314793abaf625692082910';
-  private readonly SPORTMONKS_KEY = 'GDkPEhJTHCqSscTnlGu2j87eG3Gw77ECv25j0nbnKbER9Gx6Oj7e6XRud0oh';
-  private readonly LIVESCORE_KEY = 'zKgVUXAz7Qp1abRF';
-  private readonly LIVESCORE_SECRET = 'FS5fjgjY6045388CSoyMm8mtZLv9WmOB';
-  private readonly API_FOOTBALL_KEY = 'ac0417c6e0dcfa236b146b9585892c9a';
-
+  // NEW WORKING API KEY
+  private readonly RAPIDAPI_KEY = 'f942cc2d34mshc014f220f64c0a5p1f720fjsn6d39c21ee6c1';
+  
   async fetchAllMatches(): Promise<Match[]> {
-    console.log('🌐 Fetching ONLY REAL matches from Livescore6...');
+    console.log('🔍 [LIVE-DATA] Starting fetch at', new Date().toISOString());
     
     try {
-      const response = await fetch('https://livescore6.p.rapidapi.com/matches/v2/list-live?Category=soccer', {
+      console.log('📡 [API] Calling Free API Live Football Data...');
+      
+      const response = await fetch('https://free-api-live-football-data.p.rapidapi.com/football-get-todays-live-football-data-requires-user-agent-header-x-r', {
         method: 'GET',
         headers: {
           'X-RapidAPI-Key': this.RAPIDAPI_KEY,
-          'X-RapidAPI-Host': 'livescore6.p.rapidapi.com'
+          'X-RapidAPI-Host': 'free-api-live-football-data.p.rapidapi.com',
+          'User-Agent': 'Mozilla/5.0'
         }
       });
 
-      console.log(`📡 API Response: ${response.status}`);
+      console.log(`📊 [API] Response: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
-        console.log(`❌ API error: ${response.status}`);
-        return [];
+        console.error(`❌ [API] Error ${response.status}`);
+        
+        // Fallback to Football-Data.org
+        console.log('🔄 [FALLBACK] Trying Football-Data.org...');
+        return await this.fetchFromFootballData();
       }
 
       const data = await response.json();
+      console.log(`📦 [DATA] Received:`, JSON.stringify(data).substring(0, 300));
+      
       const matches = this.parseMatches(data);
 
       if (matches.length === 0) {
-        console.log('ℹ️ No live matches at this time');
+        console.log('ℹ️ [PARSER] No live matches found');
       } else {
-        console.log(`✅ Found ${matches.length} REAL live matches`);
+        console.log(`✅ [SUCCESS] Found ${matches.length} live matches`);
       }
 
       return matches;
       
     } catch (error) {
-      console.error('❌ Fetch error:', error);
+      console.error('💥 [ERROR]:', error);
+      
+      // Fallback
+      console.log('🔄 [FALLBACK] Trying Football-Data.org...');
+      return await this.fetchFromFootballData();
+    }
+  }
+
+  private async fetchFromFootballData(): Promise<Match[]> {
+    try {
+      const response = await fetch('https://api.football-data.org/v4/matches', {
+        headers: {
+          'X-Auth-Token': '901f0e15a0314793abaf625692082910'
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`❌ [FOOTBALL-DATA] Error: ${response.status}`);
+        return [];
+      }
+
+      const data = await response.json();
+      const matches: Match[] = [];
+
+      data.matches?.forEach((match: any) => {
+        if (match.status !== 'IN_PLAY') return;
+
+        const minute = match.minute ? parseInt(match.minute.replace("'", '')) : 0;
+
+        matches.push({
+          id: `fd-${match.id}`,
+          home: match.homeTeam.name,
+          away: match.awayTeam.name,
+          league: match.competition.name,
+          country: match.competition.area.name,
+          sport: 'football',
+          status: 'live',
+          homeScore: match.score.fullTime.home || 0,
+          awayScore: match.score.fullTime.away || 0,
+          minute: minute,
+          score: `${match.score.fullTime.home || 0} - ${match.score.fullTime.away || 0}`,
+          time: match.utcDate,
+          odds: this.calculateSmartOdds(
+            match.score.fullTime.home || 0,
+            match.score.fullTime.away || 0,
+            minute
+          ),
+          statistics: this.estimateStatistics(
+            match.score.fullTime.home || 0,
+            match.score.fullTime.away || 0,
+            minute
+          )
+        });
+      });
+
+      console.log(`✅ [FOOTBALL-DATA] Found ${matches.length} matches`);
+      return matches;
+
+    } catch (error) {
+      console.error('💥 [FOOTBALL-DATA ERROR]:', error);
       return [];
     }
   }
@@ -64,38 +126,64 @@ class LiveDataFetcher {
     const matches: Match[] = [];
 
     try {
-      if (!data.Stages) return [];
-
-      data.Stages.forEach((stage: any) => {
-        stage.Events?.forEach((event: any) => {
-          if (event.Eps !== 'LIVE') return;
-
-          const match: Match = {
-            id: `live-${event.Eid}`,
-            home: event.T1?.[0]?.Nm || 'Home',
-            away: event.T2?.[0]?.Nm || 'Away',
-            league: stage.Snm || 'Unknown',
-            country: stage.Ccd || '',
-            sport: 'football',
-            status: 'live',
-            homeScore: event.Tr1 || 0,
-            awayScore: event.Tr2 || 0,
-            minute: event.Epr || 0,
-            score: `${event.Tr1 || 0} - ${event.Tr2 || 0}`,
-            time: new Date(event.Esd * 1000).toISOString(),
-            odds: this.calculateSmartOdds(event.Tr1 || 0, event.Tr2 || 0, event.Epr || 0),
-            statistics: this.estimateStatistics(event.Tr1 || 0, event.Tr2 || 0, event.Epr || 0)
-          };
-
-          matches.push(match);
-        });
-      });
+      // Different APIs have different structures
+      // Try to parse common formats
       
+      if (Array.isArray(data)) {
+        // Direct array of matches
+        data.forEach((match: any) => {
+          if (match.status === 'LIVE' || match.live) {
+            matches.push(this.createMatch(match));
+          }
+        });
+      } else if (data.matches && Array.isArray(data.matches)) {
+        // { matches: [...] }
+        data.matches.forEach((match: any) => {
+          if (match.status === 'LIVE' || match.live) {
+            matches.push(this.createMatch(match));
+          }
+        });
+      } else if (data.data && Array.isArray(data.data)) {
+        // { data: [...] }
+        data.data.forEach((match: any) => {
+          if (match.status === 'LIVE' || match.live) {
+            matches.push(this.createMatch(match));
+          }
+        });
+      }
+
     } catch (error) {
-      console.error('Parse error:', error);
+      console.error('💥 [PARSE ERROR]:', error);
     }
 
     return matches;
+  }
+
+  private createMatch(data: any): Match {
+    return {
+      id: `api-${data.id || Math.random()}`,
+      home: data.homeTeam?.name || data.home_team || data.home || 'Home',
+      away: data.awayTeam?.name || data.away_team || data.away || 'Away',
+      league: data.league?.name || data.competition || data.tournament || 'Unknown',
+      country: data.country || '',
+      sport: 'football',
+      status: 'live',
+      homeScore: data.homeScore || data.home_score || data.score?.home || 0,
+      awayScore: data.awayScore || data.away_score || data.score?.away || 0,
+      minute: parseInt(data.minute || data.time || '0'),
+      score: `${data.homeScore || 0} - ${data.awayScore || 0}`,
+      time: data.date || data.kickoff || new Date().toISOString(),
+      odds: this.calculateSmartOdds(
+        data.homeScore || 0,
+        data.awayScore || 0,
+        parseInt(data.minute || '0')
+      ),
+      statistics: this.estimateStatistics(
+        data.homeScore || 0,
+        data.awayScore || 0,
+        parseInt(data.minute || '0')
+      )
+    };
   }
 
   private calculateSmartOdds(homeScore: number, awayScore: number, minute: number): any {
@@ -121,9 +209,8 @@ class LiveDataFetcher {
       awayOdds = 3.00 - (timeRemaining / 90) * 0.3;
     }
 
-    let over25 = totalGoals >= 3 ? 1.01 : (totalGoals === 2 ? 1.65 : 2.50);
-    let under25 = totalGoals >= 3 ? 15.00 : (totalGoals === 2 ? 2.20 : 1.50);
-
+    const over25 = totalGoals >= 3 ? 1.01 : (totalGoals === 2 ? 1.65 : 2.50);
+    const under25 = totalGoals >= 3 ? 15.00 : (totalGoals === 2 ? 2.20 : 1.50);
     const bothScored = homeScore > 0 && awayScore > 0;
     const bttsYes = bothScored ? 1.01 : (minute >= 80 ? 8.00 : 2.20);
     const bttsNo = bothScored ? 15.00 : (minute >= 80 ? 1.12 : 1.70);
@@ -141,29 +228,16 @@ class LiveDataFetcher {
 
   private estimateStatistics(homeScore: number, awayScore: number, minute: number): any {
     const totalGoals = homeScore + awayScore;
-
     return {
       corners: Math.round(minute * 0.12 + Math.random() * 2),
       homeCorners: Math.round(minute * 0.07 + Math.random() * 1),
       awayCorners: Math.round(minute * 0.05 + Math.random() * 1),
       cards: Math.round(minute * 0.04 + Math.random() * 1),
-      homeCards: Math.round(minute * 0.02),
-      awayCards: Math.round(minute * 0.02),
       shots: Math.round(minute * 0.2 + totalGoals * 2),
-      homeShots: Math.round(minute * 0.12 + homeScore * 2),
-      awayShots: Math.round(minute * 0.08 + awayScore * 2),
       shotsOnTarget: totalGoals + Math.round(minute * 0.06),
-      homeShotsOnTarget: homeScore + Math.round(minute * 0.04),
-      awayShotsOnTarget: awayScore + Math.round(minute * 0.02),
       possession: 100,
-      homePossession: 50 + (homeScore - awayScore) * 3 + Math.round(Math.random() * 10 - 5),
-      awayPossession: 50 - (homeScore - awayScore) * 3 - Math.round(Math.random() * 10 - 5),
-      attacks: Math.round(minute * 1.5),
-      homeAttacks: Math.round(minute * 0.9 + homeScore * 5),
-      awayAttacks: Math.round(minute * 0.6 + awayScore * 5),
-      dangerousAttacks: Math.round(minute * 0.5 + totalGoals * 3),
-      homeDangerousAttacks: Math.round(minute * 0.3 + homeScore * 2),
-      awayDangerousAttacks: Math.round(minute * 0.2 + awayScore * 2)
+      homePossession: 50 + (homeScore - awayScore) * 3,
+      awayPossession: 50 - (homeScore - awayScore) * 3
     };
   }
 }
