@@ -1,184 +1,286 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { liveDataFetcher } from '@/lib/api-clients/live-data-fetcher';
-import { predictionEngine } from '@/lib/ai/prediction-engine';
+// Enhanced Self-Learning ML Engine with better parameter tuning
 
-export async function GET(request: NextRequest) {
-  const startTime = Date.now();
+interface MatchResult {
+  matchId: string;
+  predicted: string;
+  actual: string;
+  confidence: number;
+  correct: boolean;
+  betType: string;
+  league: string;
+  timestamp: string;
+}
+
+interface ModelVersion {
+  version: number;
+  accuracy: number;
+  totalPredictions: number;
+  correctPredictions: number;
+  parameters: ModelParameters;
+  timestamp: string;
+}
+
+interface ModelParameters {
+  overUnderLateGameThreshold: number;
+  overUnderMidGameMultiplier: number;
+  overUnderEarlyGameCaution: number;
+  oneXTwoLeadThreshold: number;
+  oneXTwoTimeMultiplier: number;
+  bttsTimeThreshold: number;
+  bttsConfidenceBoost: number;
+  minimumMinuteForPrediction: number;
+  confidenceDecayFactor: number;
+  topLeagueBonus: number;
+}
+
+const DEFAULT_PARAMETERS: ModelParameters = {
+  overUnderLateGameThreshold: 75,
+  overUnderMidGameMultiplier: 1.3,
+  overUnderEarlyGameCaution: 0.85,
+  oneXTwoLeadThreshold: 2,
+  oneXTwoTimeMultiplier: 1.2,
+  bttsTimeThreshold: 80,
+  bttsConfidenceBoost: 1.8,
+  minimumMinuteForPrediction: 25,
+  confidenceDecayFactor: 0.98,
+  topLeagueBonus: 6
+};
+
+export class MLLearningEngine {
+  private currentModel: ModelVersion;
+  private history: MatchResult[] = [];
+  private bestModel: ModelVersion;
+  private learningRate = 0.08; // Increased for faster learning
   
-  try {
-    const searchParams = request.nextUrl.searchParams;
-    
-    const filters = {
-      minConfidence: parseInt(searchParams.get('minConfidence') || '0'),
-      showAllLeagues: searchParams.get('showAllLeagues') !== 'false',
-      sports: searchParams.get('sports')?.split(',') || ['football'],
-      requireFullStats: searchParams.get('requireFullStats') === 'true',
-      matchStatus: searchParams.get('matchStatus')?.split(',') || ['live', 'scheduled'],
-      betTypes: searchParams.get('betTypes')?.split(',') || ['1X2'],
-      minOdds: parseFloat(searchParams.get('minOdds') || '1.01'),
-      maxOdds: parseFloat(searchParams.get('maxOdds') || '100'),
-      minROI: parseInt(searchParams.get('minROI') || '-100'),
-      minAccuracy: parseInt(searchParams.get('minAccuracy') || '0'),
-      minSampleSize: parseInt(searchParams.get('minSampleSize') || '0'),
-      showArchive: searchParams.get('showArchive') === 'true',
-      daysBack: parseInt(searchParams.get('daysBack') || '7'),
-      matchTime: searchParams.get('matchTime')?.split(',') || ['prematch', 'live'],
-      onlyValueBets: searchParams.get('onlyValueBets') === 'true',
-      minValuePercentage: parseInt(searchParams.get('minValuePercentage') || '0'),
+  constructor() {
+    this.currentModel = {
+      version: 1,
+      accuracy: 0,
+      totalPredictions: 0,
+      correctPredictions: 0,
+      parameters: { ...DEFAULT_PARAMETERS },
+      timestamp: new Date().toISOString()
     };
+    this.bestModel = { ...this.currentModel };
+    this.loadModel();
+  }
 
-    console.log('🎯 API Request - Filters:', filters);
+  getParameters(): ModelParameters {
+    return this.currentModel.parameters;
+  }
 
-    // Fetch matches
-    const liveMatches = await liveDataFetcher.fetchAllMatches();
-    console.log(`✅ Fetched ${liveMatches.length} matches`);
+  recordResult(result: MatchResult) {
+    this.history.push(result);
+    this.currentModel.totalPredictions++;
+    if (result.correct) this.currentModel.correctPredictions++;
+    
+    this.currentModel.accuracy = 
+      (this.currentModel.correctPredictions / this.currentModel.totalPredictions) * 100;
+    
+    console.log(`📊 Model v${this.currentModel.version} accuracy: ${this.currentModel.accuracy.toFixed(2)}%`);
+    
+    // Learn every 8 predictions (faster improvement)
+    if (this.currentModel.totalPredictions % 8 === 0) {
+      this.learn();
+    }
+    
+    this.saveModel();
+  }
 
-    // Process with AI
-    const processedMatches = liveMatches
-      .map(match => {
-        let prediction;
-        
-        if (match.status === 'live' && match.homeScore !== undefined && match.awayScore !== undefined) {
-          prediction = predictionEngine.calculatePrediction({
-            home: match.home,
-            away: match.away,
-            league: match.league,
-            homeScore: match.homeScore,
-            awayScore: match.awayScore,
-            minute: match.minute,
-            statistics: match.statistics,
-            odds: match.odds
-          });
-        } else {
-          prediction = predictionEngine.calculatePreMatchPrediction({
-            home: match.home,
-            away: match.away,
-            league: match.league,
-            odds: match.odds
-          });
-        }
+  private learn() {
+    console.log('🧠 ML Learning iteration...');
+    
+    const recentResults = this.history.slice(-40);
+    const byBetType = this.groupByBetType(recentResults);
+    
+    for (const [betType, results] of Object.entries(byBetType)) {
+      const accuracy = this.calculateAccuracy(results);
+      console.log(`  ${betType}: ${accuracy.toFixed(1)}% (${results.length} samples)`);
+      
+      if (betType.includes('Over/Under')) {
+        this.optimizeOverUnder(results, accuracy);
+      } else if (betType === '1X2') {
+        this.optimize1X2(results, accuracy);
+      } else if (betType === 'BTTS') {
+        this.optimizeBTTS(results, accuracy);
+      }
+    }
+    
+    // Compare with best model
+    if (this.currentModel.accuracy > this.bestModel.accuracy) {
+      console.log(`✅ New best! ${this.currentModel.accuracy.toFixed(2)}% > ${this.bestModel.accuracy.toFixed(2)}%`);
+      this.bestModel = JSON.parse(JSON.stringify(this.currentModel));
+    } else if (this.currentModel.accuracy < this.bestModel.accuracy - 8) {
+      console.log(`⚠️ Rollback to v${this.bestModel.version} (${this.bestModel.accuracy.toFixed(2)}%)`);
+      this.currentModel = JSON.parse(JSON.stringify(this.bestModel));
+      this.currentModel.version++;
+    } else {
+      this.currentModel.version++;
+    }
+    
+    this.currentModel.timestamp = new Date().toISOString();
+    this.saveModel();
+  }
 
-        const topLeagues = [
-          'Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
-          'Champions League', 'Europa League', 'Eredivisie', 'Primeira Liga',
-          'Championship', 'NBA', 'EuroLeague', 'ATP', 'WTA'
-        ];
-        const isTopLeague = topLeagues.some(tl => match.league.includes(tl));
+  private optimizeOverUnder(results: MatchResult[], accuracy: number) {
+    const params = this.currentModel.parameters;
+    const falseOvers = results.filter(r => !r.correct && r.predicted.includes('Over')).length;
+    const falseUnders = results.filter(r => !r.correct && r.predicted.includes('Under')).length;
+    
+    if (falseOvers > falseUnders + 2) {
+      // Too many false Overs - be more conservative
+      params.overUnderLateGameThreshold += 3;
+      params.overUnderEarlyGameCaution -= 0.08;
+      console.log('  📉 Reducing Over predictions (more conservative)');
+    } else if (falseUnders > falseOvers + 2) {
+      // Too many false Unders - be more aggressive
+      params.overUnderLateGameThreshold -= 3;
+      params.overUnderEarlyGameCaution += 0.08;
+      console.log('  📈 Increasing Over predictions (more aggressive)');
+    }
+    
+    // Ensure within reasonable bounds
+    params.overUnderLateGameThreshold = Math.max(65, Math.min(85, params.overUnderLateGameThreshold));
+    params.overUnderEarlyGameCaution = Math.max(0.7, Math.min(1.0, params.overUnderEarlyGameCaution));
+  }
 
-        return {
-          id: match.id,
-          home: match.home,
-          away: match.away,
-          league: match.league,
-          country: match.country,
-          sport: match.sport,
-          betType: prediction.betType,
-          prediction: prediction.prediction,
-          confidence: prediction.confidence,
-          odds: typeof prediction.odds === 'number' ? prediction.odds.toFixed(2) : prediction.odds,
-          hasFullStats: match.statistics !== undefined,
-          status: match.status,
-          minute: match.minute,
-          score: match.score,
-          time: match.time,
-          roi: prediction.roi,
-          accuracy: prediction.accuracy,
-          sampleSize: match.statistics ? 80 + Math.floor(Math.random() * 70) : 25,
-          valuePercentage: prediction.valuePercentage,
-          isTopLeague: isTopLeague,
-          matchTimeType: match.status === 'scheduled' ? 'prematch' : 'live',
-          reasoning: prediction.reasoning
-        };
-      })
-      .filter(match => {
-        // Skip finished pre-match
-        if (match.status === 'finished' && match.matchTimeType === 'prematch') return false;
-        
-        // Apply all filters
-        if (match.confidence < filters.minConfidence) return false;
-        if (!filters.sports.includes(match.sport)) return false;
-        
-        // Bet type matching
-        const hasMatchingBetType = filters.betTypes.some(filterType => {
-          const filterTypeLower = filterType.toLowerCase().replace(/_/g, ' ');
-          const matchBetTypeLower = match.betType.toLowerCase();
-          
-          if (matchBetTypeLower === filterTypeLower) return true;
-          if (matchBetTypeLower.includes(filterTypeLower)) return true;
-          if (filterTypeLower.includes(matchBetTypeLower)) return true;
-          
-          const mappings: Record<string, string[]> = {
-            '1x2': ['1x2', 'match winner', '1 (home win)', '2 (away win)', 'x (draw)'],
-            'btts': ['btts', 'both teams to score'],
-            'over/under': ['over/under', 'over 2.5', 'under 2.5'],
-            'handicap': ['handicap'],
-            'corners': ['corner', 'corners'],
-            'cards': ['card', 'cards']
-          };
-          
-          for (const [key, values] of Object.entries(mappings)) {
-            if (filterTypeLower.includes(key) && values.some(v => matchBetTypeLower.includes(v))) {
-              return true;
-            }
-          }
-          
-          return false;
-        });
+  private optimize1X2(results: MatchResult[], accuracy: number) {
+    const params = this.currentModel.parameters;
+    const incorrect = results.filter(r => !r.correct).length;
+    
+    if (incorrect > results.length * 0.35) {
+      // Too many errors - be more conservative
+      params.oneXTwoLeadThreshold += 0.3;
+      params.oneXTwoTimeMultiplier += 0.15;
+      console.log('  🎯 More conservative 1X2 predictions');
+    } else if (accuracy > 80) {
+      // Very good accuracy - can be more aggressive
+      params.oneXTwoLeadThreshold -= 0.15;
+      console.log('  🎯 More aggressive 1X2 predictions');
+    }
+    
+    params.oneXTwoLeadThreshold = Math.max(1.5, Math.min(3.0, params.oneXTwoLeadThreshold));
+    params.oneXTwoTimeMultiplier = Math.max(0.9, Math.min(1.8, params.oneXTwoTimeMultiplier));
+  }
 
-        if (!hasMatchingBetType) return false;
-        if (!filters.showAllLeagues && !match.isTopLeague) return false;
-        if (filters.requireFullStats && !match.hasFullStats) return false;
-        if (!filters.matchStatus.includes(match.status)) return false;
-        if (!filters.matchTime.includes(match.matchTimeType)) return false;
-        
-        const odds = parseFloat(match.odds);
-        if (odds < filters.minOdds || odds > filters.maxOdds) return false;
-        if (match.roi < filters.minROI) return false;
-        if (match.accuracy < filters.minAccuracy) return false;
-        if (match.sampleSize < filters.minSampleSize) return false;
-        if (filters.onlyValueBets && match.valuePercentage < filters.minValuePercentage) return false;
-        
-        return true;
-      })
-      .sort((a, b) => {
-        // Live > scheduled
-        if (a.status === 'live' && b.status !== 'live') return -1;
-        if (a.status !== 'live' && b.status === 'live') return 1;
-        
-        // Then by confidence + value
-        const scoreA = a.confidence * 0.65 + a.valuePercentage * 0.35;
-        const scoreB = b.confidence * 0.65 + b.valuePercentage * 0.35;
-        return scoreB - scoreA;
-      });
+  private optimizeBTTS(results: MatchResult[], accuracy: number) {
+    const params = this.currentModel.parameters;
+    const falseYes = results.filter(r => !r.correct && r.predicted.includes('Yes')).length;
+    const falseNo = results.filter(r => !r.correct && r.predicted.includes('No')).length;
+    
+    if (falseNo > falseYes + 1) {
+      // Too many false Nos
+      params.bttsTimeThreshold += 3;
+      console.log('  ⚽ Reducing BTTS No confidence');
+    } else if (falseYes > falseNo + 1) {
+      // Too many false Yes
+      params.bttsTimeThreshold -= 3;
+      console.log('  ⚽ Increasing BTTS No confidence');
+    }
+    
+    params.bttsTimeThreshold = Math.max(70, Math.min(88, params.bttsTimeThreshold));
+  }
 
-    const processingTime = Date.now() - startTime;
-    console.log(`✅ Processed in ${processingTime}ms - ${processedMatches.length} matches returned`);
+  private groupByBetType(results: MatchResult[]): Record<string, MatchResult[]> {
+    return results.reduce((acc, result) => {
+      if (!acc[result.betType]) acc[result.betType] = [];
+      acc[result.betType].push(result);
+      return acc;
+    }, {} as Record<string, MatchResult[]>);
+  }
 
-    return NextResponse.json({
-      success: true,
-      matches: processedMatches,
-      count: processedMatches.length,
-      totalAvailable: liveMatches.length,
-      filtersApplied: filters,
-      timestamp: new Date().toISOString(),
-      processingTime: `${processingTime}ms`,
-      source: 'REAL_API_WITH_SMART_ODDS'
-    });
+  private calculateAccuracy(results: MatchResult[]): number {
+    if (results.length === 0) return 0;
+    return (results.filter(r => r.correct).length / results.length) * 100;
+  }
 
-  } catch (error) {
-    console.error('❌ API Error:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to fetch matches',
-        matches: [],
-        count: 0
-      },
-      { status: 500 }
-    );
+  getStatistics() {
+    const recentResults = this.history.slice(-50);
+    
+    return {
+      currentModel: this.currentModel,
+      bestModel: this.bestModel,
+      totalPredictions: this.history.length,
+      recentAccuracy: this.calculateAccuracy(recentResults),
+      last24hAccuracy: this.calculateAccuracy(
+        this.history.filter(r => {
+          const age = Date.now() - new Date(r.timestamp).getTime();
+          return age < 24 * 60 * 60 * 1000;
+        })
+      ),
+      byBetType: this.getAccuracyByBetType(),
+      improvementRate: this.currentModel.accuracy - 75 // Compare to baseline 75%
+    };
+  }
+
+  private getAccuracyByBetType() {
+    const recent = this.history.slice(-100);
+    const grouped = this.groupByBetType(recent);
+    return Object.entries(grouped).map(([betType, results]) => ({
+      betType,
+      accuracy: this.calculateAccuracy(results),
+      count: results.length,
+      trend: this.calculateTrend(results)
+    }));
+  }
+
+  private calculateTrend(results: MatchResult[]): 'improving' | 'declining' | 'stable' {
+    if (results.length < 10) return 'stable';
+    
+    const firstHalf = results.slice(0, Math.floor(results.length / 2));
+    const secondHalf = results.slice(Math.floor(results.length / 2));
+    
+    const firstAccuracy = this.calculateAccuracy(firstHalf);
+    const secondAccuracy = this.calculateAccuracy(secondHalf);
+    
+    if (secondAccuracy > firstAccuracy + 5) return 'improving';
+    if (secondAccuracy < firstAccuracy - 5) return 'declining';
+    return 'stable';
+  }
+
+  private saveModel() {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem('ml_current_model', JSON.stringify(this.currentModel));
+      localStorage.setItem('ml_best_model', JSON.stringify(this.bestModel));
+      localStorage.setItem('ml_history', JSON.stringify(this.history.slice(-250)));
+    } catch (e) {
+      console.error('Save failed:', e);
+    }
+  }
+
+  private loadModel() {
+    if (typeof window === 'undefined') return;
+    try {
+      const current = localStorage.getItem('ml_current_model');
+      const best = localStorage.getItem('ml_best_model');
+      const history = localStorage.getItem('ml_history');
+      
+      if (current) this.currentModel = JSON.parse(current);
+      if (best) this.bestModel = JSON.parse(best);
+      if (history) this.history = JSON.parse(history);
+      
+      console.log(`📚 Loaded ML model v${this.currentModel.version} (${this.currentModel.accuracy.toFixed(2)}%)`);
+      console.log(`🏆 Best model: v${this.bestModel.version} (${this.bestModel.accuracy.toFixed(2)}%)`);
+    } catch (e) {
+      console.error('Load failed:', e);
+    }
+  }
+
+  reset() {
+    this.currentModel = {
+      version: 1,
+      accuracy: 0,
+      totalPredictions: 0,
+      correctPredictions: 0,
+      parameters: { ...DEFAULT_PARAMETERS },
+      timestamp: new Date().toISOString()
+    };
+    this.bestModel = { ...this.currentModel };
+    this.history = [];
+    this.saveModel();
+    console.log('🔄 Model reset to defaults');
   }
 }
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const mlLearningEngine = new MLLearningEngine();
