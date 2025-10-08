@@ -27,7 +27,6 @@ export default function Home() {
     try {
       const params = new URLSearchParams();
       
-      // Date range
       let dateFrom = '';
       let dateTo = '';
       
@@ -47,7 +46,6 @@ export default function Home() {
       params.set('dateFrom', dateFrom);
       params.set('dateTo', dateTo);
       
-      // Status filter
       if (filters.status === 'live') {
         params.set('live', '1');
       } else if (filters.status === 'prematch') {
@@ -56,22 +54,29 @@ export default function Home() {
         params.set('status', 'FT');
       }
       
-      console.log(`🔍 Fetching matches:`, Object.fromEntries(params));
+      console.log(`🔍 Fetching:`, Object.fromEntries(params));
       
-      const response = await fetch(`/api/matches?${params}`);
+      const response = await fetch(`/api/matches?${params.toString()}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
       const data = await response.json();
       
       if (data.success) {
-        console.log(`✅ Received ${data.matches.length} matches`);
-        setMatches(data.matches);
+        console.log(`✅ Got ${data.matches?.length || 0} matches`);
+        setMatches(data.matches || []);
         setLastUpdate(new Date().toLocaleTimeString('pl-PL'));
         setApiCallsUsed(prev => prev + 1);
       } else {
-        setError(data.error || 'Błąd pobierania danych');
+        setError(data.error || 'Błąd pobierania');
+        setMatches([]);
       }
     } catch (err: any) {
-      setError('Błąd połączenia z serwerem');
-      console.error('Fetch error:', err);
+      console.error('❌ Error:', err);
+      setError(`Błąd: ${err.message || 'Unknown'}`);
+      setMatches([]);
     } finally {
       setLoading(false);
     }
@@ -91,21 +96,17 @@ export default function Home() {
           matchDate: match.time,
           isLive: match.status === 'live',
           currentOdds: {
-            home: match.odds?.home,
-            draw: match.odds?.draw,
-            away: match.odds?.away,
-            over05: match.odds?.over05,
-            over15: match.odds?.over15,
-            over25: match.odds?.over25,
-            over35: match.odds?.over35,
-            over45: match.odds?.over45,
-            under05: match.odds?.under05,
-            under15: match.odds?.under15,
-            under25: match.odds?.under25,
-            under35: match.odds?.under35,
-            under45: match.odds?.under45,
-            bttsYes: match.odds?.bttsYes,
-            bttsNo: match.odds?.bttsNo,
+            home: match.odds?.home || 2.0,
+            draw: match.odds?.draw || 3.5,
+            away: match.odds?.away || 3.5,
+            over15: match.odds?.over15 || 1.3,
+            under15: match.odds?.under15 || 3.5,
+            over25: match.odds?.over25 || 1.8,
+            under25: match.odds?.under25 || 2.0,
+            over35: match.odds?.over35 || 2.5,
+            under35: match.odds?.under35 || 1.5,
+            bttsYes: match.odds?.bttsYes || 1.9,
+            bttsNo: match.odds?.bttsNo || 1.9,
           },
           liveStats: match.statistics
         })
@@ -124,7 +125,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error('AI Error:', error);
-      alert('❌ Błąd generowania predykcji');
+      alert('❌ Błąd AI');
     } finally {
       setLoadingAI(null);
     }
@@ -138,48 +139,36 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
-      {/* Header */}
       <div className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700 sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                  ⚽ AI Betting Platform Pro
-                </h1>
-                <p className="text-sm text-gray-400">
-                  Prematch + Live • All Markets • Deep Analysis
-                </p>
-              </div>
+            <div>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                ⚽ AI Betting Pro
+              </h1>
+              <p className="text-sm text-gray-400">Prematch + Live • All Markets</p>
             </div>
             
             <div className="flex items-center gap-3">
               <div className="px-3 py-1.5 bg-gray-700/50 rounded-lg text-sm">
                 <span className="text-gray-400">API:</span>
                 <span className="ml-2 font-bold text-blue-400">{apiCallsUsed}</span>
-                <span className="text-gray-500 ml-1">/ 100</span>
+                <span className="text-gray-500">/100</span>
               </div>
               
               {lastUpdate && (
-                <div className="text-xs text-gray-500">
-                  {lastUpdate}
-                </div>
+                <div className="text-xs text-gray-500">{lastUpdate}</div>
               )}
               
-              <Link href="/archive" className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-sm">
-                📚 Archiwum
-              </Link>
-              
-              <Link href="/dashboard" className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-sm">
-                📊 Dashboard
-              </Link>
+              <Link href="/archive" className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">📚</Link>
+              <Link href="/dashboard" className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">📊</Link>
               
               <button
                 onClick={fetchMatches}
                 disabled={loading}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-lg transition font-medium"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-lg font-medium"
               >
-                {loading ? '🔄 Ładowanie...' : '🔄 Odśwież'}
+                {loading ? '🔄 Loading...' : '🔄 Odśwież'}
               </button>
             </div>
           </div>
@@ -187,16 +176,15 @@ export default function Home() {
       </div>
 
       <div className="container mx-auto px-4 py-6">
-        {/* Filters */}
-        <div className="bg-gray-800/30 backdrop-blur rounded-xl p-4 mb-6 border border-gray-700">
+        <div className="bg-gray-800/30 rounded-xl p-4 mb-6 border border-gray-700">
           <h3 className="text-lg font-bold mb-3">🔍 Filtry</h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
               <label className="block text-xs text-gray-400 mb-1">Kraj</label>
               <input
                 type="text"
-                placeholder="np. England"
+                placeholder="England"
                 value={filters.country}
                 onChange={(e) => setFilters({...filters, country: e.target.value})}
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm"
@@ -207,7 +195,7 @@ export default function Home() {
               <label className="block text-xs text-gray-400 mb-1">Liga</label>
               <input
                 type="text"
-                placeholder="np. Premier League"
+                placeholder="Premier League"
                 value={filters.league}
                 onChange={(e) => setFilters({...filters, league: e.target.value})}
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm"
@@ -255,14 +243,12 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Error */}
         {error && (
           <div className="bg-red-900/20 border border-red-500 rounded-xl p-4 mb-6">
             <p className="text-red-400">❌ {error}</p>
           </div>
         )}
 
-        {/* Loading */}
         {loading && (
           <div className="text-center py-12">
             <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -270,7 +256,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Empty */}
         {!loading && matches.length === 0 && !lastUpdate && (
           <div className="text-center py-12 text-gray-400">
             <div className="text-6xl mb-4">⚽</div>
@@ -285,19 +270,16 @@ export default function Home() {
           </div>
         )}
 
-        {/* Matches */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {filteredMatches.map((match) => (
-            <div key={match.id} className="bg-gray-800/30 backdrop-blur rounded-xl p-6 border border-gray-700 hover:border-blue-500 transition">
+            <div key={match.id} className="bg-gray-800/30 rounded-xl p-6 border border-gray-700 hover:border-blue-500 transition">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-xs text-gray-400">
                   {match.country} • {match.league}
                 </div>
                 <div className="flex items-center gap-2">
                   {match.status === 'live' && (
-                    <span className="px-2 py-0.5 bg-red-600 text-xs font-bold rounded animate-pulse">
-                      🔴 LIVE
-                    </span>
+                    <span className="px-2 py-0.5 bg-red-600 text-xs font-bold rounded animate-pulse">🔴 LIVE</span>
                   )}
                   <div className="text-xs font-bold text-blue-400">
                     {new Date(match.time).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
@@ -333,7 +315,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* AI Predictions Display */}
               {aiPredictions[match.id] && aiPredictions[match.id].length > 0 && (
                 <div className="mt-4 space-y-3 max-h-96 overflow-y-auto">
                   {aiPredictions[match.id].map((pred: any, idx: number) => (
@@ -342,15 +323,13 @@ export default function Home() {
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-lg">{pred.market}</span>
                           <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                            pred.risk === 'low' ? 'bg-green-600' :
-                            pred.risk === 'medium' ? 'bg-yellow-600' : 'bg-red-600'
+                            pred.risk === 'low' ? 'bg-green-600' : pred.risk === 'medium' ? 'bg-yellow-600' : 'bg-red-600'
                           }`}>
                             {pred.risk.toUpperCase()}
                           </span>
                         </div>
                         <span className={`px-3 py-1 rounded-lg text-sm font-bold ${
-                          pred.confidence >= 70 ? 'bg-green-600' :
-                          pred.confidence >= 55 ? 'bg-yellow-600' : 'bg-gray-600'
+                          pred.confidence >= 70 ? 'bg-green-600' : pred.confidence >= 55 ? 'bg-yellow-600' : 'bg-gray-600'
                         }`}>
                           {pred.confidence}%
                         </span>
@@ -359,22 +338,20 @@ export default function Home() {
                       <div className="mb-3 p-3 bg-black/30 rounded-lg">
                         <div className="text-sm text-gray-400 mb-1">💡 Typ:</div>
                         <div className="text-xl font-bold text-blue-400">{pred.prediction}</div>
-                        <div className="text-sm text-gray-400 mt-1">
-                          @ {pred.recommendedOdds} • Stawka: {pred.stakeSize}u
-                        </div>
+                        <div className="text-sm text-gray-400 mt-1">@ {pred.recommendedOdds} • Stawka: {pred.stakeSize}u</div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 mb-3">
                         <div className="p-2 bg-black/20 rounded">
-                          <div className="text-xs text-gray-400">Implied Prob</div>
+                          <div className="text-xs text-gray-400">Implied</div>
                           <div className="text-sm font-bold">{pred.features?.impliedProbability || 'N/A'}%</div>
                         </div>
                         <div className="p-2 bg-black/20 rounded">
-                          <div className="text-xs text-gray-400">Real Prob</div>
+                          <div className="text-xs text-gray-400">Real</div>
                           <div className="text-sm font-bold text-green-400">{pred.features?.realProbability || pred.confidence}%</div>
                         </div>
                         <div className="p-2 bg-black/20 rounded">
-                          <div className="text-xs text-gray-400">Expected Value</div>
+                          <div className="text-xs text-gray-400">EV</div>
                           <div className={`text-sm font-bold ${pred.expectedValue > 0 ? 'text-green-400' : 'text-red-400'}`}>
                             {pred.expectedValue > 0 ? '+' : ''}{pred.expectedValue}%
                           </div>
@@ -390,9 +367,7 @@ export default function Home() {
                       <div className="space-y-1">
                         <div className="text-xs font-bold text-gray-300 mb-1">📋 Analiza:</div>
                         {pred.reasoning.map((reason: string, i: number) => (
-                          <div key={i} className="text-xs text-gray-400 bg-black/20 p-2 rounded">
-                            {reason}
-                          </div>
+                          <div key={i} className="text-xs text-gray-400 bg-black/20 p-2 rounded">{reason}</div>
                         ))}
                       </div>
 
@@ -402,10 +377,9 @@ export default function Home() {
                         }`}>
                           {pred.timing === 'live' ? '🔴 LIVE' : '⏰ PREMATCH'}
                         </span>
-                        
                         {pred.expectedValue > 5 && (
                           <span className="px-2 py-1 rounded text-xs font-bold bg-gradient-to-r from-yellow-600 to-orange-600 animate-pulse">
-                            💎 VALUE BET
+                            💎 VALUE
                           </span>
                         )}
                       </div>
@@ -417,9 +391,9 @@ export default function Home() {
               <button
                 onClick={() => generateAIPredictions(match)}
                 disabled={loadingAI === match.id}
-                className="w-full mt-3 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 rounded-lg transition font-medium"
+                className="w-full mt-3 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-600 rounded-lg font-medium"
               >
-                {loadingAI === match.id ? '🔄 Analizuję...' : '🧠 Generuj Predykcje AI'}
+                {loadingAI === match.id ? '🔄 Analizuję...' : '🧠 Generuj AI'}
               </button>
             </div>
           ))}
