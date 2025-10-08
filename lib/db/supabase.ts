@@ -5,7 +5,6 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Database schema types
 export interface MatchHistory {
   id: string;
   match_id: string;
