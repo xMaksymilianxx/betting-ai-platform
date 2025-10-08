@@ -2,7 +2,6 @@ import { supabase } from './supabase';
 import type { MatchHistory } from './supabase';
 
 class MatchArchiver {
-  // Archive completed match
   async archiveMatch(match: any, finalResult: any): Promise<void> {
     try {
       const matchData: Omit<MatchHistory, 'id' | 'created_at'> = {
@@ -50,7 +49,6 @@ class MatchArchiver {
     }
   }
 
-  // Get historical matches for analysis
   async getHistoricalMatches(filters: {
     league?: string;
     team?: string;
@@ -93,7 +91,6 @@ class MatchArchiver {
     return data || [];
   }
 
-  // Get team statistics
   async getTeamStats(teamName: string, league: string): Promise<any> {
     const { data, error } = await supabase
       .from('team_statistics')
@@ -111,7 +108,6 @@ class MatchArchiver {
     return data;
   }
 
-  // Get H2H history between two teams
   async getH2H(team1: string, team2: string, limit: number = 10): Promise<MatchHistory[]> {
     const { data, error } = await supabase
       .from('match_history')
@@ -128,7 +124,6 @@ class MatchArchiver {
     return data || [];
   }
 
-  // Calculate team form
   async getTeamForm(teamName: string, lastN: number = 5): Promise<string[]> {
     const { data, error } = await supabase
       .from('match_history')
@@ -156,7 +151,6 @@ class MatchArchiver {
     return 'X';
   }
 
-  // Get database statistics
   async getDatabaseStats(): Promise<any> {
     const { count: totalMatches } = await supabase
       .from('match_history')
