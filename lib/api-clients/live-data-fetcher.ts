@@ -16,68 +16,105 @@ interface Match {
 }
 
 class LiveDataFetcher {
-  // NEW WORKING API KEY
-  private readonly RAPIDAPI_KEY = 'f942cc2d34mshc014f220f64c0a5p1f720fjsn6d39c21ee6c1';
+  // ALL API KEYS
+  private readonly API_FOOTBALL_KEY = 'ac0417c6e0dcfa236b146b9585892c9a';
+  private readonly FOOTBALL_DATA_KEY = '901f0e15a0314793abaf625692082910';
+  private readonly LIVESCORE_API_KEY = 'zKgVUXAz7Qp1abRF';
+  private readonly LIVESCORE_API_SECRET = 'FS5fjgjY6045388CSoyMm8mtZLv9WmOB';
   
   async fetchAllMatches(): Promise<Match[]> {
-    console.log('🔍 [LIVE-DATA] Starting fetch at', new Date().toISOString());
+    console.log('🚀 [MULTI-API] Starting fetch at', new Date().toISOString());
     
+    // Try API-Football first (most reliable)
+    let matches = await this.fetchFromAPIFootball();
+    if (matches.length > 0) {
+      console.log(`✅ [API-FOOTBALL] Success: ${matches.length} matches`);
+      return matches;
+    }
+    
+    // Fallback to Football-Data.org
+    console.log('🔄 [FALLBACK] Trying Football-Data.org...');
+    matches = await this.fetchFromFootballData();
+    if (matches.length > 0) {
+      console.log(`✅ [FOOTBALL-DATA] Success: ${matches.length} matches`);
+      return matches;
+    }
+    
+    // Fallback to LiveScore API
+    console.log('🔄 [FALLBACK] Trying LiveScore API...');
+    matches = await this.fetchFromLiveScoreAPI();
+    if (matches.length > 0) {
+      console.log(`✅ [LIVESCORE-API] Success: ${matches.length} matches`);
+      return matches;
+    }
+    
+    console.log('ℹ️ [RESULT] No live matches found from any API');
+    return [];
+  }
+
+  // API-FOOTBALL (Best for live data)
+  private async fetchFromAPIFootball(): Promise<Match[]> {
     try {
-      console.log('📡 [API] Calling Free API Live Football Data...');
-      
-      const response = await fetch('https://free-api-live-football-data.p.rapidapi.com/football-get-todays-live-football-data-requires-user-agent-header-x-r', {
-        method: 'GET',
+      const response = await fetch('https://v3.football.api-sports.io/fixtures?live=all', {
         headers: {
-          'X-RapidAPI-Key': this.RAPIDAPI_KEY,
-          'X-RapidAPI-Host': 'free-api-live-football-data.p.rapidapi.com',
-          'User-Agent': 'Mozilla/5.0'
+          'x-rapidapi-key': this.API_FOOTBALL_KEY,
+          'x-rapidapi-host': 'v3.football.api-sports.io'
         }
       });
 
-      console.log(`📊 [API] Response: ${response.status} ${response.statusText}`);
+      console.log(`📡 [API-FOOTBALL] Response: ${response.status}`);
 
-      if (!response.ok) {
-        console.error(`❌ [API] Error ${response.status}`);
-        
-        // Fallback to Football-Data.org
-        console.log('🔄 [FALLBACK] Trying Football-Data.org...');
-        return await this.fetchFromFootballData();
-      }
+      if (!response.ok) return [];
 
       const data = await response.json();
-      console.log(`📦 [DATA] Received:`, JSON.stringify(data).substring(0, 300));
-      
-      const matches = this.parseMatches(data);
+      const matches: Match[] = [];
 
-      if (matches.length === 0) {
-        console.log('ℹ️ [PARSER] No live matches found');
-      } else {
-        console.log(`✅ [SUCCESS] Found ${matches.length} live matches`);
-      }
+      data.response?.forEach((item: any) => {
+        const fixture = item.fixture;
+        const teams = item.teams;
+        const goals = item.goals;
+        const league = item.league;
+
+        if (fixture.status.short === 'LIVE' || fixture.status.short === '1H' || fixture.status.short === '2H') {
+          matches.push({
+            id: `af-${fixture.id}`,
+            home: teams.home.name,
+            away: teams.away.name,
+            league: league.name,
+            country: league.country,
+            sport: 'football',
+            status: 'live',
+            homeScore: goals.home || 0,
+            awayScore: goals.away || 0,
+            minute: fixture.status.elapsed || 0,
+            score: `${goals.home || 0} - ${goals.away || 0}`,
+            time: fixture.date,
+            odds: this.calculateSmartOdds(goals.home || 0, goals.away || 0, fixture.status.elapsed || 0),
+            statistics: this.estimateStatistics(goals.home || 0, goals.away || 0, fixture.status.elapsed || 0)
+          });
+        }
+      });
 
       return matches;
-      
+
     } catch (error) {
-      console.error('💥 [ERROR]:', error);
-      
-      // Fallback
-      console.log('🔄 [FALLBACK] Trying Football-Data.org...');
-      return await this.fetchFromFootballData();
+      console.error('❌ [API-FOOTBALL ERROR]:', error);
+      return [];
     }
   }
 
+  // FOOTBALL-DATA.ORG (Reliable, top leagues)
   private async fetchFromFootballData(): Promise<Match[]> {
     try {
       const response = await fetch('https://api.football-data.org/v4/matches', {
         headers: {
-          'X-Auth-Token': '901f0e15a0314793abaf625692082910'
+          'X-Auth-Token': this.FOOTBALL_DATA_KEY
         }
       });
 
-      if (!response.ok) {
-        console.error(`❌ [FOOTBALL-DATA] Error: ${response.status}`);
-        return [];
-      }
+      console.log(`📡 [FOOTBALL-DATA] Response: ${response.status}`);
+
+      if (!response.ok) return [];
 
       const data = await response.json();
       const matches: Match[] = [];
@@ -113,77 +150,66 @@ class LiveDataFetcher {
         });
       });
 
-      console.log(`✅ [FOOTBALL-DATA] Found ${matches.length} matches`);
       return matches;
 
     } catch (error) {
-      console.error('💥 [FOOTBALL-DATA ERROR]:', error);
+      console.error('❌ [FOOTBALL-DATA ERROR]:', error);
       return [];
     }
   }
 
-  private parseMatches(data: any): Match[] {
-    const matches: Match[] = [];
-
+  // LIVESCORE-API.COM
+  private async fetchFromLiveScoreAPI(): Promise<Match[]> {
     try {
-      // Different APIs have different structures
-      // Try to parse common formats
-      
-      if (Array.isArray(data)) {
-        // Direct array of matches
-        data.forEach((match: any) => {
-          if (match.status === 'LIVE' || match.live) {
-            matches.push(this.createMatch(match));
-          }
+      const response = await fetch('https://livescore-api.com/api-client/scores/live.json', {
+        headers: {
+          'key': this.LIVESCORE_API_KEY,
+          'secret': this.LIVESCORE_API_SECRET
+        }
+      });
+
+      console.log(`📡 [LIVESCORE-API] Response: ${response.status}`);
+
+      if (!response.ok) return [];
+
+      const data = await response.json();
+      const matches: Match[] = [];
+
+      data.data?.match?.forEach((match: any) => {
+        if (match.live !== '1') return;
+
+        matches.push({
+          id: `ls-${match.id}`,
+          home: match.home_name,
+          away: match.away_name,
+          league: match.league_name,
+          country: match.country_name,
+          sport: 'football',
+          status: 'live',
+          homeScore: parseInt(match.score?.split('-')[0]?.trim() || '0'),
+          awayScore: parseInt(match.score?.split('-')[1]?.trim() || '0'),
+          minute: parseInt(match.time || '0'),
+          score: match.score || '0 - 0',
+          time: match.added || new Date().toISOString(),
+          odds: this.calculateSmartOdds(
+            parseInt(match.score?.split('-')[0]?.trim() || '0'),
+            parseInt(match.score?.split('-')[1]?.trim() || '0'),
+            parseInt(match.time || '0')
+          ),
+          statistics: this.estimateStatistics(
+            parseInt(match.score?.split('-')[0]?.trim() || '0'),
+            parseInt(match.score?.split('-')[1]?.trim() || '0'),
+            parseInt(match.time || '0')
+          )
         });
-      } else if (data.matches && Array.isArray(data.matches)) {
-        // { matches: [...] }
-        data.matches.forEach((match: any) => {
-          if (match.status === 'LIVE' || match.live) {
-            matches.push(this.createMatch(match));
-          }
-        });
-      } else if (data.data && Array.isArray(data.data)) {
-        // { data: [...] }
-        data.data.forEach((match: any) => {
-          if (match.status === 'LIVE' || match.live) {
-            matches.push(this.createMatch(match));
-          }
-        });
-      }
+      });
+
+      return matches;
 
     } catch (error) {
-      console.error('💥 [PARSE ERROR]:', error);
+      console.error('❌ [LIVESCORE-API ERROR]:', error);
+      return [];
     }
-
-    return matches;
-  }
-
-  private createMatch(data: any): Match {
-    return {
-      id: `api-${data.id || Math.random()}`,
-      home: data.homeTeam?.name || data.home_team || data.home || 'Home',
-      away: data.awayTeam?.name || data.away_team || data.away || 'Away',
-      league: data.league?.name || data.competition || data.tournament || 'Unknown',
-      country: data.country || '',
-      sport: 'football',
-      status: 'live',
-      homeScore: data.homeScore || data.home_score || data.score?.home || 0,
-      awayScore: data.awayScore || data.away_score || data.score?.away || 0,
-      minute: parseInt(data.minute || data.time || '0'),
-      score: `${data.homeScore || 0} - ${data.awayScore || 0}`,
-      time: data.date || data.kickoff || new Date().toISOString(),
-      odds: this.calculateSmartOdds(
-        data.homeScore || 0,
-        data.awayScore || 0,
-        parseInt(data.minute || '0')
-      ),
-      statistics: this.estimateStatistics(
-        data.homeScore || 0,
-        data.awayScore || 0,
-        parseInt(data.minute || '0')
-      )
-    };
   }
 
   private calculateSmartOdds(homeScore: number, awayScore: number, minute: number): any {
