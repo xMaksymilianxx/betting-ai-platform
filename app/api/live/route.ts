@@ -34,36 +34,66 @@ export async function GET(request: NextRequest) {
 
     console.log(`📊 Data quality: ${withStats} with stats, ${withOdds} with odds, ${withForm} with form`);
 
-    // Convert to legacy format for predictions
-    const matches = enrichedMatches.map(match => ({
-      id: match.id,
-      home: match.home,
-      away: match.away,
-      league: match.league,
-      country: match.country || '',
-      sport: 'football',
-      status: match.status,
-      homeScore: match.homeScore,
-      awayScore: match.awayScore,
-      minute: match.minute,
-      score: match.score,
-      time: match.time,
-      odds: match.odds || {},
-      statistics: match.statistics || {},
-      form: match.form,
-      h2h: match.h2h,
-      dataSources: match.dataSources,
-      dataQuality: match.dataQuality
-    }));
-
-    // Import prediction engine
-    const { predictionEngine } = await import('@/lib/ml/prediction-engine');
-
+    // Generate simple predictions without ML engine
     const startTime = Date.now();
-    const predictions = await predictionEngine.generatePredictions(matches);
+    
+    const predictions = enrichedMatches.map(match => {
+      const confidence = match.dataQuality || 50;
+      
+      let prediction = 'Draw';
+      let betType = '1X2';
+      let recommendedOdds = 3.5;
+      let value = 1.0;
+      
+      if (match.odds) {
+        if (match.odds.home < 2.0) {
+          prediction = `${match.home} Win`;
+          betType = 'Home Win';
+          recommendedOdds = match.odds.home;
+          value = match.odds.home > 1.5 ? 1.1 : 1.0;
+        } else if (match.odds.away < 2.0) {
+          prediction = `${match.away} Win`;
+          betType = 'Away Win';
+          recommendedOdds = match.odds.away;
+          value = match.odds.away > 1.5 ? 1.1 : 1.0;
+        } else if (match.odds.over25 < 2.0) {
+          prediction = 'Over 2.5 Goals';
+          betType = 'Over/Under';
+          recommendedOdds = match.odds.over25;
+          value = match.odds.over25 > 1.5 ? 1.08 : 1.0;
+        } else if (match.odds.bttsYes < 2.0) {
+          prediction = 'Both Teams To Score';
+          betType = 'BTTS';
+          recommendedOdds = match.odds.bttsYes;
+          value = match.odds.bttsYes > 1.5 ? 1.08 : 1.0;
+        }
+      }
+
+      return {
+        id: match.id,
+        matchId: match.id,
+        home: match.home,
+        away: match.away,
+        league: match.league,
+        country: match.country || '',
+        prediction: prediction,
+        betType: betType,
+        confidence: confidence,
+        odds: recommendedOdds,
+        value: value,
+        reasoning: `Analysis based on: ${match.dataSources.join(', ')}. Current score: ${match.score} (${match.minute}')`,
+        statistics: match.statistics,
+        score: match.score,
+        minute: match.minute,
+        status: match.status,
+        dataSources: match.dataSources,
+        dataQuality: match.dataQuality
+      };
+    });
+    
     const duration = Date.now() - startTime;
 
-    console.log(`✅ Processed ${predictions.length}/${matches.length} matches in ${duration}ms`);
+    console.log(`✅ Processed ${predictions.length}/${enrichedMatches.length} matches in ${duration}ms`);
 
     // Calculate confidence stats
     const avgConfidence = predictions.length > 0
