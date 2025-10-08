@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 
 export default function Home() {
@@ -10,8 +10,9 @@ export default function Home() {
   const [showFilters, setShowFilters] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   
+  // FILTRY WYŁĄCZONE DOMYŚLNIE (wszystko na 0/false)
   const [filters, setFilters] = useState({
-    minConfidence: 60,
+    minConfidence: 0,  // ZMIENIONE Z 60 NA 0
     showAllLeagues: true,
     sports: ['football', 'basketball', 'tennis'],
     matchStatus: ['live', 'scheduled'],
@@ -36,6 +37,8 @@ export default function Home() {
   // Manual fetch
   const fetchMatches = async () => {
     setLoading(true);
+    console.log('🔍 Fetching with filters:', filters);
+    
     try {
       const params = new URLSearchParams({
         minConfidence: filters.minConfidence.toString(),
@@ -77,6 +80,25 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Reset filters to default (show all)
+  const resetFilters = () => {
+    setFilters({
+      minConfidence: 0,
+      showAllLeagues: true,
+      sports: ['football', 'basketball', 'tennis'],
+      matchStatus: ['live', 'scheduled'],
+      betTypes: ['1X2', 'Over/Under', 'BTTS', 'Handicap', 'Corners', 'Cards'],
+      minOdds: 1.01,
+      maxOdds: 100,
+      minROI: -100,
+      minAccuracy: 0,
+      minSampleSize: 0,
+      matchTime: ['prematch', 'live'],
+      onlyValueBets: false,
+      minValuePercentage: 0
+    });
   };
 
   return (
@@ -143,22 +165,36 @@ export default function Home() {
         {/* Settings Panel */}
         {showSettings && (
           <div className="bg-gray-800/50 backdrop-blur rounded-xl p-6 border border-gray-700 mb-6">
-            <h3 className="text-xl font-bold mb-4">⚙️ Ustawienia</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold">⚙️ Ustawienia i Filtry</h3>
+              <button
+                onClick={resetFilters}
+                className="text-sm px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded"
+              >
+                Reset
+              </button>
+            </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Min Confidence */}
               <div>
                 <label className="block text-sm text-gray-400 mb-2">
-                  Min. pewność: {filters.minConfidence}%
+                  Min. pewność: <span className="text-white font-bold">{filters.minConfidence}%</span>
                 </label>
                 <input
                   type="range"
                   min="0"
                   max="100"
+                  step="5"
                   value={filters.minConfidence}
                   onChange={(e) => setFilters({...filters, minConfidence: parseInt(e.target.value)})}
-                  className="w-full"
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
                 />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>0%</span>
+                  <span>50%</span>
+                  <span>100%</span>
+                </div>
               </div>
 
               {/* Sports */}
@@ -174,13 +210,13 @@ export default function Home() {
                           : [...filters.sports, sport];
                         setFilters({...filters, sports: newSports});
                       }}
-                      className={`px-3 py-1 rounded ${
+                      className={`px-3 py-2 rounded font-medium ${
                         filters.sports.includes(sport)
-                          ? 'bg-blue-600'
-                          : 'bg-gray-700'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-700 text-gray-300'
                       }`}
                     >
-                      {sport}
+                      {sport === 'football' ? '⚽' : sport === 'basketball' ? '🏀' : '🎾'} {sport}
                     </button>
                   ))}
                 </div>
@@ -199,76 +235,18 @@ export default function Home() {
                           : [...filters.matchStatus, status];
                         setFilters({...filters, matchStatus: newStatus});
                       }}
-                      className={`px-3 py-1 rounded ${
+                      className={`px-4 py-2 rounded font-medium ${
                         filters.matchStatus.includes(status)
-                          ? 'bg-blue-600'
-                          : 'bg-gray-700'
+                          ? 'bg-red-600 text-white'
+                          : 'bg-gray-700 text-gray-300'
                       }`}
                     >
-                      {status}
+                      {status === 'live' ? '🔴 Live' : '📅 Scheduled'}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Value Bets Only */}
-              <div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={filters.onlyValueBets}
-                    onChange={(e) => setFilters({...filters, onlyValueBets: e.target.checked})}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">Tylko Value Bets (💎)</span>
-                </label>
-                {filters.onlyValueBets && (
-                  <div className="mt-2">
-                    <label className="block text-xs text-gray-500 mb-1">
-                      Min. value: {filters.minValuePercentage}%
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="50"
-                      value={filters.minValuePercentage}
-                      onChange={(e) => setFilters({...filters, minValuePercentage: parseInt(e.target.value)})}
-                      className="w-full"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* All Leagues */}
-              <div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={filters.showAllLeagues}
-                    onChange={(e) => setFilters({...filters, showAllLeagues: e.target.checked})}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">Wszystkie ligi</span>
-                </label>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Filters Panel */}
-        <div className="bg-gray-800/50 backdrop-blur rounded-xl p-6 border border-gray-700 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold">🔍 Filtry</h3>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="text-sm text-blue-400 hover:underline"
-            >
-              {showFilters ? 'Zwiń' : 'Rozwiń'}
-            </button>
-          </div>
-
-          {showFilters && (
-            <div className="space-y-4">
               {/* Bet Types */}
               <div>
                 <label className="block text-sm text-gray-400 mb-2">Typy zakładów</label>
@@ -282,10 +260,10 @@ export default function Home() {
                           : [...filters.betTypes, type];
                         setFilters({...filters, betTypes: newTypes});
                       }}
-                      className={`px-3 py-1 rounded text-sm ${
+                      className={`px-2 py-1 rounded text-xs font-medium ${
                         filters.betTypes.includes(type)
-                          ? 'bg-purple-600'
-                          : 'bg-gray-700'
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-gray-700 text-gray-400'
                       }`}
                     >
                       {type}
@@ -294,79 +272,98 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Odds Range */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">
-                    Min. kurs: {filters.minOdds}
-                  </label>
+              {/* Value Bets Only */}
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer mb-3">
                   <input
-                    type="number"
-                    step="0.1"
-                    value={filters.minOdds}
-                    onChange={(e) => setFilters({...filters, minOdds: parseFloat(e.target.value)})}
-                    className="w-full bg-gray-700 rounded px-3 py-2"
+                    type="checkbox"
+                    checked={filters.onlyValueBets}
+                    onChange={(e) => setFilters({...filters, onlyValueBets: e.target.checked})}
+                    className="w-5 h-5"
                   />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">
-                    Max. kurs: {filters.maxOdds}
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={filters.maxOdds}
-                    onChange={(e) => setFilters({...filters, maxOdds: parseFloat(e.target.value)})}
-                    className="w-full bg-gray-700 rounded px-3 py-2"
-                  />
-                </div>
+                  <span className="text-sm font-medium">💎 Tylko Value Bets</span>
+                </label>
+                {filters.onlyValueBets && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">
+                      Min. value: <span className="text-yellow-400 font-bold">{filters.minValuePercentage}%</span>
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="50"
+                      step="5"
+                      value={filters.minValuePercentage}
+                      onChange={(e) => setFilters({...filters, minValuePercentage: parseInt(e.target.value)})}
+                      className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* Min ROI */}
+              {/* All Leagues */}
               <div>
-                <label className="block text-sm text-gray-400 mb-2">
-                  Min. ROI: {filters.minROI}%
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filters.showAllLeagues}
+                    onChange={(e) => setFilters({...filters, showAllLeagues: e.target.checked})}
+                    className="w-5 h-5"
+                  />
+                  <span className="text-sm font-medium">🏆 Wszystkie ligi (nie tylko TOP)</span>
                 </label>
-                <input
-                  type="range"
-                  min="-100"
-                  max="100"
-                  value={filters.minROI}
-                  onChange={(e) => setFilters({...filters, minROI: parseInt(e.target.value)})}
-                  className="w-full"
-                />
               </div>
             </div>
-          )}
-        </div>
+
+            {/* Filter Summary */}
+            <div className="mt-4 p-3 bg-gray-900/50 rounded border border-gray-600">
+              <div className="text-xs text-gray-400">
+                <span className="font-bold text-white">Aktywne filtry:</span> 
+                <span className="ml-2">Pewność ≥{filters.minConfidence}%</span>
+                {filters.onlyValueBets && <span className="ml-2">• Value ≥{filters.minValuePercentage}%</span>}
+                <span className="ml-2">• {filters.sports.length} sport(y)</span>
+                <span className="ml-2">• {filters.betTypes.length} typ(ów)</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Matches List */}
         <div className="bg-gray-800/30 backdrop-blur rounded-xl p-6 border border-gray-700">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold">📋 Znalezione mecze ({stats.count})</h2>
             
-            <button
-              onClick={fetchMatches}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-lg transition"
-            >
-              <span className={loading ? 'animate-spin' : ''}>🔄</span>
-              <span>{loading ? 'Ładowanie...' : 'Odśwież'}</span>
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
+              >
+                ⚙️ {showSettings ? 'Ukryj' : 'Filtry'}
+              </button>
+              <button
+                onClick={fetchMatches}
+                disabled={loading}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-lg transition font-medium"
+              >
+                <span className={loading ? 'animate-spin' : ''}>🔄</span>
+                <span>{loading ? 'Ładowanie...' : 'Odśwież'}</span>
+              </button>
+            </div>
           </div>
 
           {matches.length === 0 && !loading && (
             <div className="text-center py-12 text-gray-400">
               <div className="text-6xl mb-4">🎯</div>
-              <p className="text-lg mb-2">Kliknij "Odśwież" aby załadować mecze</p>
+              <p className="text-lg mb-2 font-medium">Kliknij "Odśwież" aby załadować mecze</p>
               <p className="text-sm">Oszczędzaj limity API używając ręcznego odświeżania</p>
+              <p className="text-xs text-gray-500 mt-2">Filtry domyślnie wyłączone - zobaczysz wszystkie mecze</p>
             </div>
           )}
 
           {loading && (
             <div className="text-center py-12">
               <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-gray-400">Pobieranie meczów...</p>
+              <p className="text-gray-400">Pobieranie meczów z API...</p>
             </div>
           )}
 
@@ -380,8 +377,7 @@ export default function Home() {
                     }`}>
                       {match.status === 'live' ? `LIVE ${match.minute}'` : 'Scheduled'}
                     </span>
-                    <span className="text-xs text-gray-400">{match.league}</span>
-                    <span className="text-xs text-gray-500">{match.sport}</span>
+                    <span className="text-xs text-gray-400 truncate">{match.league}</span>
                   </div>
 
                   <div className="mb-3">
@@ -400,28 +396,23 @@ export default function Home() {
                   </div>
 
                   <div className="border-t border-gray-700 pt-3">
-                    <div className="text-xs text-gray-400 mb-1">Typ: {match.betType}</div>
-                    <div className="text-lg font-bold text-blue-300 mb-2">{match.prediction}</div>
+                    <div className="text-xs text-gray-400 mb-1">{match.betType}</div>
+                    <div className="text-base font-bold text-blue-300 mb-2">{match.prediction}</div>
                     
                     <div className="text-right mb-2">
                       <div className="text-3xl font-bold text-green-400">{match.confidence}%</div>
                       <div className="text-xs text-gray-400">Pewność AI</div>
                     </div>
 
-                    <div className="flex items-center justify-between text-sm mb-2">
+                    <div className="flex items-center justify-between text-sm mb-1">
                       <span className="text-yellow-400">Kurs: {match.odds}</span>
                       <span className={match.roi >= 0 ? 'text-green-400' : 'text-red-400'}>
                         ROI: {match.roi >= 0 ? '+' : ''}{match.roi}%
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span>Accuracy: {match.accuracy}%</span>
-                      <span>Samples: {match.sampleSize}</span>
-                    </div>
-
                     {match.valuePercentage >= 10 && (
-                      <div className="mt-2 px-2 py-1 bg-yellow-500/20 border border-yellow-500/50 rounded text-xs text-yellow-300 font-bold">
+                      <div className="mt-2 px-2 py-1 bg-yellow-500/20 border border-yellow-500/50 rounded text-xs text-yellow-300 font-bold text-center">
                         💎 Value +{match.valuePercentage}%
                       </div>
                     )}
@@ -439,7 +430,7 @@ export default function Home() {
         </div>
 
         <div className="mt-6 text-center text-sm text-gray-500">
-          <p>💡 Kliknij "Odśwież" aby zaktualizować dane. Dane odświeżają się manualnie.</p>
+          <p>💡 Filtry są domyślnie wyłączone - zobaczysz wszystkie mecze</p>
           <p className="mt-1">
             <Link href="/ml-stats" className="text-blue-400 hover:underline">
               Zobacz statystyki ML 🧠
